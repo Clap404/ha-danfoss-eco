@@ -9,7 +9,7 @@ jobs:
     name: HACS Validation
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout
       - name: HACS validation
         uses: hacs/action@main
         with:
