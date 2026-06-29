@@ -1,0 +1,8 @@
+{
+  "include": ["custom_components"],
+  "pythonVersion": "3.12",
+  "venvPath": ".",
+  "venv": ".venv",
+  "reportMissingTypeStubs": "none",
+  "reportIncompatibleVariableOverride": "none"
+}

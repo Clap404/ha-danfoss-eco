@@ -1,0 +1,65 @@
+{
+  "config": {
+    "flow_title": "{name}",
+    "step": {
+      "user": {
+        "title": "Select Danfoss eTRV",
+        "description": "Pick a discovered thermostat to pair.",
+        "data": {
+          "address": "Device"
+        }
+      },
+      "pair": {
+        "title": "Pair {name}",
+        "description": "Click Submit, then short-press the button on the thermostat. The LED will turn solid for a few seconds — keep this dialog open until pairing completes.",
+        "data": {
+          "pin": "PIN (4 digits)"
+        }
+      }
+    },
+    "error": {
+      "pairing_failed": "Could not read pairing key. Make sure you short-pressed the button while the LED was off; retry.",
+      "invalid_pin": "PIN must be exactly 4 digits."
+    },
+    "abort": {
+      "already_configured": "This thermostat is already configured.",
+      "no_devices_found": "No Danfoss eTRV devices discovered.",
+      "not_supported": "Discovered device is not a Danfoss eTRV."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Danfoss eTRV options",
+        "data": {
+          "pin": "PIN (4 digits)"
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "battery": { "name": "Battery" },
+      "rssi": { "name": "Signal strength" },
+      "error_flags": { "name": "Error flags" }
+    },
+    "binary_sensor": {
+      "error_motor_jammed": { "name": "Motor jammed" },
+      "error_low_battery": { "name": "Battery low" },
+      "error_sensor": { "name": "Temperature sensor fault" },
+      "error_clock_invalid": { "name": "Clock not set" },
+      "adaptable_regulation": { "name": "Adaptive learning" }
+    },
+    "switch": {
+      "child_lock": { "name": "Child lock" }
+    },
+    "number": {
+      "temperature_min": { "name": "Minimum temperature" },
+      "temperature_max": { "name": "Maximum temperature" },
+      "frost_protection_temperature": {
+        "name": "Frost protection temperature"
+      },
+      "vacation_temperature": { "name": "Vacation temperature" }
+    }
+  }
+}

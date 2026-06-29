@@ -1,0 +1,57 @@
+[project]
+name = "danfoss_eco"
+version = "0.1.0"
+requires-python = ">=3.12"
+
+[dependency-groups]
+dev = [
+  "homeassistant",
+  "bleak>=0.21.0",
+  "bleak-retry-connector>=3.4.0",
+  "voluptuous",
+  "xxtea>=2.0.0",
+  "pyright",
+]
+
+[tool.pyright]
+include = ["custom_components"]
+pythonVersion = "3.12"
+venvPath = "."
+venv = ".venv"
+reportMissingTypeStubs = "none"
+reportIncompatibleVariableOverride = "none"
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+src = ["custom_components"]
+
+[tool.ruff.lint]
+select = [
+  "E",    # pycodestyle errors
+  "W",    # pycodestyle warnings
+  "F",    # pyflakes
+  "I",    # isort
+  "B",    # flake8-bugbear
+  "UP",   # pyupgrade
+  "SIM",  # flake8-simplify
+  "RUF",  # ruff-specific
+  "ASYNC",
+  "C4",   # comprehensions
+  "PIE",
+  "PL",   # pylint
+  "PTH",  # use pathlib
+  "TID",  # tidy imports
+]
+ignore = [
+  "PLR0913",  # too many arguments
+  "PLR2004",  # magic value
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["PLR2004", "S101"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["custom_components.danfoss_eco"]
+force-sort-within-sections = true
+combine-as-imports = true

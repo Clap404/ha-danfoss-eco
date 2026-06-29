@@ -1,0 +1,10 @@
+sync_clock:
+  name: Sync clock
+  description: Write the current time to the device. Needed after a battery swap (E10).
+  fields:
+    device_id:
+      name: Device
+      required: true
+      selector:
+        device:
+          integration: danfoss_eco
