@@ -1,22 +1,22 @@
 {
   "domain": "danfoss_eco",
   "name": "Danfoss Eco (eTRV)",
-  "version": "0.1.0",
-  "documentation": "https://github.com/Clap404/danfoss_eco_ha",
-  "issue_tracker": "https://github.com/Clap404/danfoss_eco_ha/issues",
-  "codeowners": ["@Clap404"],
-  "config_flow": true,
-  "iot_class": "local_polling",
-  "dependencies": ["bluetooth"],
-  "requirements": [
-    "bleak>=0.21.0",
-    "bleak-retry-connector>=3.4.0",
-    "xxtea>=2.0.0"
-  ],
   "bluetooth": [
     {
       "manufacturer_id": 89,
       "service_uuid": "10020000-2749-0001-0000-00805f9b042f"
     }
-  ]
+  ],
+  "codeowners": ["@Clap404"],
+  "config_flow": true,
+  "dependencies": ["bluetooth"],
+  "documentation": "https://github.com/Clap404/danfoss_eco_ha",
+  "iot_class": "local_polling",
+  "issue_tracker": "https://github.com/Clap404/danfoss_eco_ha/issues",
+  "requirements": [
+    "bleak>=0.21.0",
+    "bleak-retry-connector>=3.4.0",
+    "xxtea>=2.0.0"
+  ],
+  "version": "0.1.0"
 }
