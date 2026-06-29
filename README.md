@@ -1,6 +1,6 @@
 # Danfoss Eco (eTRV) for Home Assistant
 
-![Danfoss Eco](custom_components/danfoss_eco/icon%402x.png)
+![Danfoss Eco](custom_components/danfoss_eco/brand/icon%402x.png)
 
 Home Assistant custom integration for **Danfoss Eco** Bluetooth Thermostatic Radiator Valves (eTRV). Local-only, talks directly to the TRV over BLE. This integration aims to transform your TRVs from a programmable device into a connected one.
 
