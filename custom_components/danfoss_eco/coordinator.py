@@ -40,6 +40,7 @@ _LOGGER = logging.getLogger(__name__)
 
 RETRY_ATTEMPTS = 3
 RETRY_BACKOFF_S = 2.0
+WRITE_DEBOUNCE_S = 5.0
 
 
 async def _with_retry(name: str, op):
@@ -82,6 +83,10 @@ class ETRVCoordinator(DataUpdateCoordinator[ETRVState]):
         pin_str: str = entry.data.get(CONF_PIN, DEFAULT_PIN)
         self._pin = pin_str.encode("ascii")
         self._write_lock = asyncio.Lock()
+        self._pending_setpoint: float | None = None
+        self._pending_settings: Settings | None = None
+        self._flush_handle: asyncio.TimerHandle | None = None
+        self._flush_task: asyncio.Task | None = None
 
         super().__init__(
             hass,
@@ -100,6 +105,8 @@ class ETRVCoordinator(DataUpdateCoordinator[ETRVState]):
         return ETRVClient(target, secret_key=self._secret, pin=self._pin)
 
     async def _async_update_data(self) -> ETRVState:
+        # Flush any pending debounced writes first so the poll reads post-write state.
+        await self._flush_now()
         async with self._write_lock:
             try:
                 return await _with_retry("poll", self._read_all)
@@ -168,13 +175,67 @@ class ETRVCoordinator(DataUpdateCoordinator[ETRVState]):
         self.async_set_updated_data(replace(self.data, **changes))
 
     async def async_write_target_temperature(self, target: float) -> None:
-        await self._run_session("write_setpoint", lambda c: c.write_setpoint(target))
+        self._pending_setpoint = target
         if self.data and self.data.temperature:
             self._optimistic_update(temperature=replace(self.data.temperature, set_point=target))
+        self._arm_flush()
 
     async def async_write_settings(self, settings: Settings) -> None:
-        await self._run_session("write_settings", lambda c: c.write_settings(settings))
+        self._pending_settings = settings
         self._optimistic_update(settings=settings)
+        self._arm_flush()
+
+    # --- debounced flush -----------------------------------------------------
+
+    def _arm_flush(self) -> None:
+        """Schedule (or reschedule) the debounced flush."""
+        loop = self.hass.loop
+        if self._flush_handle is not None:
+            self._flush_handle.cancel()
+        self._flush_handle = loop.call_later(WRITE_DEBOUNCE_S, self._launch_flush)
+
+    def _launch_flush(self) -> None:
+        self._flush_handle = None
+        if self._flush_task and not self._flush_task.done():
+            return
+        self._flush_task = self.hass.async_create_task(self._flush_pending())
+
+    async def _flush_pending(self) -> None:
+        setpoint = self._pending_setpoint
+        settings = self._pending_settings
+        if setpoint is None and settings is None:
+            return
+        self._pending_setpoint = None
+        self._pending_settings = None
+
+        async def body(client):
+            if setpoint is not None:
+                await client.write_setpoint(setpoint)
+            if settings is not None:
+                await client.write_settings(settings)
+
+        try:
+            await self._run_session("flush_writes", body)
+        except Exception as exc:  # noqa: BLE001
+            _LOGGER.warning("flush_writes failed: %s", exc)
+
+    async def _flush_now(self) -> None:
+        """Cancel debounce timer and await any in-flight flush."""
+        if self._flush_handle is not None:
+            self._flush_handle.cancel()
+            self._flush_handle = None
+        if self._pending_setpoint is not None or self._pending_settings is not None:
+            self._launch_flush()
+        if self._flush_task and not self._flush_task.done():
+            await self._flush_task
+
+    def async_drop_pending(self) -> None:
+        """Drop any pending debounced writes without sending. Used on unload."""
+        if self._flush_handle is not None:
+            self._flush_handle.cancel()
+            self._flush_handle = None
+        self._pending_setpoint = None
+        self._pending_settings = None
 
     async def async_sync_clock(self) -> None:
         async def body(client):

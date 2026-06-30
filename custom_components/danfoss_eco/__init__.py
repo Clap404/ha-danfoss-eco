@@ -37,6 +37,8 @@ async def _async_options_updated(hass: HomeAssistant, entry: ConfigEntry) -> Non
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unload_ok:
-        hass.data[DOMAIN].pop(entry.entry_id, None)
+        coordinator: ETRVCoordinator | None = hass.data[DOMAIN].pop(entry.entry_id, None)
+        if coordinator is not None:
+            coordinator.async_drop_pending()
         async_unload_services(hass)
     return unload_ok
