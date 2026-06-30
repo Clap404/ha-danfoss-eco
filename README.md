@@ -53,10 +53,11 @@ Copy `custom_components/danfoss_eco/` into your HA `config/custom_components/` d
 
 This project has been largely AI generated. As such, I consider it a derivative work : protocol decoding, crypto handling, and characteristic mapping were lifted and ported from:
 
+- [AdamStrojek/libetrv](https://github.com/AdamStrojek/libetrv.git) (Apache 2.0)
 - [keton/etrv2mqtt](https://github.com/keton/etrv2mqtt) (MIT)
 - [dmitry-cherkas/esphome-danfoss-eco](https://github.com/dmitry-cherkas/esphome-danfoss-eco) (MIT)
 
-Huge thanks to both authors for reverse engineering and publishing their projects many years ago.
+Huge thanks to the original authors for reverse engineering and publishing their projects many years ago.
 
 ## License
 
