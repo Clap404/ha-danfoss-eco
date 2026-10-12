@@ -34,6 +34,7 @@ from .etrv.properties import (
     CurrentTime,
     ErrorFlag,
     Errors,
+    Name,
     Schedule,
     Settings,
     Temperature,
@@ -328,6 +329,12 @@ class ETRVCoordinator(DataUpdateCoordinator[ETRVState]):
             self._flush_handle = None
         self._pending_setpoint = None
         self._pending_settings = None
+
+    async def async_write_name(self, name: str) -> None:
+        async def body(client):
+            await client.write_name(Name(name=name))
+
+        await self._run_session("write_name", body)
 
     async def async_sync_clock(self) -> None:
         async def body(client):

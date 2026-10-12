@@ -200,7 +200,8 @@ class Name:
 
     def pack(self) -> bytes:
         # App pre-encryption buffer is 15 bytes; XXTEA pads to 16 (4-byte aligned).
-        return self.name.encode("utf-8")[:15].ljust(16, b"\x00")
+        raw = self.name.encode("utf-8")[:15].decode("utf-8", errors="ignore").encode("utf-8")
+        return raw.ljust(16, b"\x00")
 
 
 @dataclass

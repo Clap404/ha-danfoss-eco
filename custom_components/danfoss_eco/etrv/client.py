@@ -96,6 +96,9 @@ class ETRVClient:
     async def __aexit__(self, *exc) -> None:
         await self.disconnect()
 
+    def set_secret_key(self, secret_key: bytes) -> None:
+        self._secret = secret_key
+
     async def connect(self) -> None:
         if self._client is not None and self._client.is_connected:
             return

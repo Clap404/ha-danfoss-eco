@@ -133,12 +133,13 @@ class DanfossEcoConfigFlow(ConfigFlow, domain=DOMAIN):
             )
             if ble_device is None:
                 errors["base"] = "not_connectable"
-            secret = (
+            paired = (
                 await self._try_read_secret(ble_device, pin) if pin and ble_device else None
             )
-            if secret is not None:
+            if paired is not None:
+                secret, device_name = paired
                 return self.async_create_entry(
-                    title=self._discovered_name or address,
+                    title=device_name or self._discovered_name or address,
                     data={
                         CONF_ADDRESS: address,
                         CONF_SECRET_KEY: secret.hex(),
@@ -163,8 +164,12 @@ class DanfossEcoConfigFlow(ConfigFlow, domain=DOMAIN):
             errors=errors,
         )
 
-    async def _try_read_secret(self, ble_device: BLEDevice, pin: str = DEFAULT_PIN) -> bytes | None:
+    async def _try_read_secret(
+        self, ble_device: BLEDevice, pin: str = DEFAULT_PIN
+    ) -> tuple[bytes, str | None] | None:
         """Connect repeatedly until we can read the plaintext secret_key char.
+
+        Returns the key and the name stored on the TRV, read in the same session.
 
         The user is expected to short-press the TRV button while this is running.
         """
@@ -177,7 +182,13 @@ class DanfossEcoConfigFlow(ConfigFlow, domain=DOMAIN):
                 await client.connect()
                 sk = await client.read_secret_key()
                 _LOGGER.info("Paired with %s", self._discovered_address)
-                return sk.key
+                client.set_secret_key(sk.key)
+                try:
+                    device_name = (await client.read_name()).name.strip() or None
+                except Exception as exc:  # noqa: BLE001
+                    _LOGGER.debug("name read failed: %s", exc)
+                    device_name = None
+                return sk.key, device_name
             except Exception as exc:  # noqa: BLE001
                 last_exc = exc
                 _LOGGER.debug("pair attempt failed: %s", exc)
