@@ -6,19 +6,16 @@ Wraps a `BleakClient` with the device's conventions:
   - secret_key char is plaintext and only readable while device is in
     pairing mode (LED blinking after long button press)
 
-This module is pure protocol — no Home Assistant imports — so it can be
-exercised from a CLI probe script against real hardware.
+Connections go through `bleak_retry_connector.establish_connection`, as Home
+Assistant requires, so callers must pass a `BLEDevice` from HA's bluetooth API.
 """
 from __future__ import annotations
 
-import asyncio
 import logging
-from contextlib import asynccontextmanager
-from typing import AsyncIterator
 
-from bleak import BleakClient
 from bleak.backends.device import BLEDevice
 from bleak.exc import BleakError
+from bleak_retry_connector import BleakClientWithServiceCache, establish_connection
 
 from ..const import (
     UUID_BATTERY_LEVEL,
@@ -54,7 +51,6 @@ from .properties import (
 _LOGGER = logging.getLogger(__name__)
 
 DEFAULT_PIN = b"0000"
-CONNECT_TIMEOUT = 30.0
 CONNECT_ATTEMPTS = 4
 
 
@@ -81,14 +77,14 @@ class ETRVClient:
 
     def __init__(
         self,
-        device_or_address: BLEDevice | str,
+        device: BLEDevice,
         secret_key: bytes | None,
         pin: bytes = DEFAULT_PIN,
     ) -> None:
-        self._target = device_or_address
+        self._device = device
         self._secret = secret_key
         self._pin = pin
-        self._client: BleakClient | None = None
+        self._client: BleakClientWithServiceCache | None = None
         self._pin_sent = False
 
     # --- connection lifecycle -------------------------------------------------
@@ -103,26 +99,17 @@ class ETRVClient:
     async def connect(self) -> None:
         if self._client is not None and self._client.is_connected:
             return
-        last: Exception | None = None
-        for attempt in range(1, CONNECT_ATTEMPTS + 1):
-            client = BleakClient(self._target, timeout=CONNECT_TIMEOUT)
-            self._client = client
-            try:
-                await client.connect()
-                await self._send_pin()
-                return
-            except (BleakError, asyncio.TimeoutError) as exc:
-                last = exc
-                _LOGGER.debug("connect attempt %d/%d failed: %s", attempt, CONNECT_ATTEMPTS, exc)
-                try:
-                    await client.disconnect()
-                except Exception:  # noqa: BLE001
-                    pass
-                self._client = None
-                self._pin_sent = False
-                await asyncio.sleep(1.0 * attempt)
-        assert last is not None
-        raise last
+        self._client = await establish_connection(
+            BleakClientWithServiceCache,
+            self._device,
+            self._device.name or self._device.address,
+            max_attempts=CONNECT_ATTEMPTS,
+        )
+        try:
+            await self._send_pin()
+        except Exception:
+            await self.disconnect()
+            raise
 
     async def disconnect(self) -> None:
         if self._client is not None:
@@ -251,31 +238,3 @@ class ETRVClient:
             if value:
                 info[name] = value
         return info
-
-
-@asynccontextmanager
-async def open_client(
-    device_or_address: BLEDevice | str,
-    secret_key: bytes | None,
-    pin: bytes = DEFAULT_PIN,
-) -> AsyncIterator[ETRVClient]:
-    """Convenience: open a one-shot session."""
-    client = ETRVClient(device_or_address, secret_key, pin)
-    await client.connect()
-    try:
-        yield client
-    finally:
-        await client.disconnect()
-
-
-async def _retry(coro_factory, attempts: int = 3, delay: float = 0.5):
-    last_exc: Exception | None = None
-    for i in range(attempts):
-        try:
-            return await coro_factory()
-        except BleakError as exc:
-            last_exc = exc
-            _LOGGER.debug("BLE op failed (%d/%d): %s", i + 1, attempts, exc)
-            await asyncio.sleep(delay)
-    assert last_exc is not None
-    raise last_exc

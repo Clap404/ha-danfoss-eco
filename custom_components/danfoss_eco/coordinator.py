@@ -121,8 +121,11 @@ class ETRVCoordinator(DataUpdateCoordinator[ETRVState]):
         ble_device = bluetooth.async_ble_device_from_address(
             self.hass, self.address, connectable=True
         )
-        target = ble_device or self.address
-        return ETRVClient(target, secret_key=self._secret, pin=self._pin)
+        if ble_device is None:
+            raise UpdateFailed(
+                f"{self.address} not seen by any connectable Bluetooth adapter or proxy"
+            )
+        return ETRVClient(ble_device, secret_key=self._secret, pin=self._pin)
 
     async def _async_update_data(self) -> ETRVState:
         # Flush any pending debounced writes first so the poll reads post-write state.

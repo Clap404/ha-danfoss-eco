@@ -19,7 +19,8 @@
     },
     "error": {
       "pairing_failed": "Could not read pairing key. Make sure you short-pressed the button while the LED was off; retry.",
-      "invalid_pin": "PIN must be exactly 4 digits."
+      "invalid_pin": "PIN must be exactly 4 digits.",
+      "not_connectable": "No Bluetooth adapter or proxy can connect to this thermostat. Check it is in range of a connectable adapter or an active ESPHome proxy."
     },
     "abort": {
       "already_configured": "This thermostat is already configured.",

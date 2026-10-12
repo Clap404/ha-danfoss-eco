@@ -19,6 +19,7 @@ from copy import deepcopy
 from typing import Any
 
 import voluptuous as vol
+from bleak.backends.device import BLEDevice
 from homeassistant.components import bluetooth
 from homeassistant.components.bluetooth import BluetoothServiceInfoBleak
 from homeassistant.config_entries import (
@@ -130,8 +131,11 @@ class DanfossEcoConfigFlow(ConfigFlow, domain=DOMAIN):
             ble_device = bluetooth.async_ble_device_from_address(
                 self.hass, address, connectable=True
             )
-            target = ble_device or address
-            secret = await self._try_read_secret(target, pin) if pin else None
+            if ble_device is None:
+                errors["base"] = "not_connectable"
+            secret = (
+                await self._try_read_secret(ble_device, pin) if pin and ble_device else None
+            )
             if secret is not None:
                 return self.async_create_entry(
                     title=self._discovered_name or address,
@@ -159,7 +163,7 @@ class DanfossEcoConfigFlow(ConfigFlow, domain=DOMAIN):
             errors=errors,
         )
 
-    async def _try_read_secret(self, target: Any, pin: str = DEFAULT_PIN) -> bytes | None:
+    async def _try_read_secret(self, ble_device: BLEDevice, pin: str = DEFAULT_PIN) -> bytes | None:
         """Connect repeatedly until we can read the plaintext secret_key char.
 
         The user is expected to short-press the TRV button while this is running.
@@ -168,7 +172,7 @@ class DanfossEcoConfigFlow(ConfigFlow, domain=DOMAIN):
         last_exc: Exception | None = None
         pin_bytes = pin.encode("ascii")
         while self.hass.loop.time() < deadline:
-            client = ETRVClient(target, secret_key=None, pin=pin_bytes)
+            client = ETRVClient(ble_device, secret_key=None, pin=pin_bytes)
             try:
                 await client.connect()
                 sk = await client.read_secret_key()
