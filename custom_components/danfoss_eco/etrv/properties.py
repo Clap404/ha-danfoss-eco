@@ -314,6 +314,49 @@ class Schedule:
     def empty(cls) -> "Schedule":
         return cls(home_temperature=21.0, away_temperature=17.0, days=cls._default_days())
 
+    def _periods(self, day_idx: int) -> list[tuple[int, int]]:
+        """Used (start, end) periods of `day_idx` (0=Sun..6=Sat), unused ones dropped."""
+        day = self.days[day_idx]
+        return [
+            (s, e)
+            for s, e in (
+                (day.p1_start, day.p1_end),
+                (day.p2_start, day.p2_end),
+                (day.p3_start, day.p3_end),
+            )
+            if not (s == 0 and e == 0)
+        ]
+
+    def setpoint_at(self, local_time: datetime) -> float:
+        """The setpoint this schedule calls for at `local_time` (device wall clock).
+
+        Inside a period → home temperature, otherwise away temperature.
+        """
+        periods = self._periods((local_time.weekday() + 1) % 7)
+        minutes = local_time.hour * 60 + local_time.minute
+        if any(start <= minutes < end for start, end in periods):
+            return self.home_temperature
+        return self.away_temperature
+
+    def next_transition(self, local_time: datetime) -> datetime | None:
+        """When the scheduled setpoint next changes, strictly after `local_time`.
+
+        Scans a full week ahead so an always-away schedule with a single
+        weekly period still finds its next boundary. None if the schedule
+        never changes the setpoint.
+        """
+        best: datetime | None = None
+        for delta in range(8):
+            midnight = (local_time + timedelta(days=delta)).replace(
+                hour=0, minute=0, second=0, microsecond=0
+            )
+            for start, end in self._periods((midnight.weekday() + 1) % 7):
+                for minute in (start, end):
+                    at = midnight + timedelta(minutes=minute)
+                    if at > local_time and (best is None or at < best):
+                        best = at
+        return best
+
     @classmethod
     def parse(cls, char1: bytes, char2: bytes, char3: bytes) -> "Schedule":
         if len(char1) < 20 or len(char2) < 12 or len(char3) < 12:

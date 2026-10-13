@@ -31,6 +31,7 @@ from .const import (
 from .etrv.client import ETRVClient
 from .etrv.properties import (
     Battery,
+    ConfigBit,
     CurrentTime,
     ErrorFlag,
     Errors,
@@ -218,6 +219,32 @@ class ETRVCoordinator(DataUpdateCoordinator[ETRVState]):
     def _latest_rssi(self) -> int | None:
         info = bluetooth.async_last_service_info(self.hass, self.address, connectable=True)
         return info.rssi if info else None
+
+    def device_wall_clock(self) -> datetime:
+        """The device's local wall-clock time right now — what its schedule runs on.
+
+        The device derives local time as UTC + the stored raw offset, plus one
+        DST hour when the daylight_saving config bit is set (see CurrentTime).
+        Falls back to this machine's timezone if the clock characteristic has
+        never been read; the weekly clock repair keeps drift under 90s.
+        """
+        data = self.data
+        if data and data.current_time is not None:
+            offset = data.current_time.offset_seconds
+            if data.settings is not None and data.settings.get_bit(ConfigBit.DAYLIGHT_SAVING):
+                offset += 3600
+            return datetime.now(tz=timezone.utc).astimezone(timezone(timedelta(seconds=offset)))
+        return datetime.now().astimezone()
+
+    def scheduled_setpoint(self) -> float | None:
+        """The setpoint the device's stored schedule calls for right now.
+
+        Computed locally from the last-polled schedule — no device contact.
+        """
+        data = self.data
+        if not data or not data.schedule:
+            return None
+        return data.schedule.setpoint_at(self.device_wall_clock())
 
     # --- writes --------------------------------------------------------------
 

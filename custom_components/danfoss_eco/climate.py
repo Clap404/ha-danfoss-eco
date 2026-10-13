@@ -12,7 +12,8 @@ applies the frost_protection_temperature).
 
 from __future__ import annotations
 
-from typing import Any
+from datetime import datetime, timezone
+from typing import Any, Callable
 
 from homeassistant.components.climate import (
     ATTR_HVAC_MODE,
@@ -22,8 +23,9 @@ from homeassistant.components.climate import (
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import ATTR_TEMPERATURE, PRECISION_HALVES, UnitOfTemperature
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.event import async_track_point_in_utc_time
 
 from .const import DOMAIN
 from .coordinator import ETRVCoordinator
@@ -70,6 +72,52 @@ class ETRVClimate(ETRVEntity, ClimateEntity):
 
     def __init__(self, coordinator: ETRVCoordinator) -> None:
         super().__init__(coordinator, "climate")
+        self._boundary_unsub: Callable[[], None] | None = None
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        self._schedule_boundary_update()
+
+    async def async_will_remove_from_hass(self) -> None:
+        self._cancel_boundary_update()
+        await super().async_will_remove_from_hass()
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        # Schedule/mode data may have changed — re-arm the boundary tracker.
+        self._schedule_boundary_update()
+        super()._handle_coordinator_update()
+
+    def _cancel_boundary_update(self) -> None:
+        if self._boundary_unsub is not None:
+            self._boundary_unsub()
+            self._boundary_unsub = None
+
+    def _schedule_boundary_update(self) -> None:
+        """Follow the stored schedule while in SCHEDULE mode, without polling.
+
+        The device changes its setpoint on period boundaries; recompute the
+        displayed setpoint at the next boundary so it stays truthful between
+        the (battery-saving) hourly polls.
+        """
+        self._cancel_boundary_update()
+        data = self.coordinator.data
+        if not data or not data.settings or data.settings.mode != Mode.SCHEDULE:
+            return
+        if not data.schedule:
+            return
+        next_at = data.schedule.next_transition(self.coordinator.device_wall_clock())
+        if next_at is None:
+            return
+        self._boundary_unsub = async_track_point_in_utc_time(
+            self.hass, self._async_boundary_reached, next_at.astimezone(timezone.utc)
+        )
+
+    @callback
+    def _async_boundary_reached(self, _now: datetime) -> None:
+        self._boundary_unsub = None
+        self._schedule_boundary_update()
+        self.async_write_ha_state()
 
     # --- state ---------------------------------------------------------------
 
@@ -80,7 +128,16 @@ class ETRVClimate(ETRVEntity, ClimateEntity):
 
     @property
     def target_temperature(self) -> float | None:
-        t = self.coordinator.data.temperature if self.coordinator.data else None
+        data = self.coordinator.data
+        if not data:
+            return None
+        # In SCHEDULE mode the device follows its stored weekly schedule, so
+        # derive the setpoint locally instead of showing the stale manual
+        # value from the last poll (which can be an hour old).
+        if data.settings is not None and data.settings.mode == Mode.SCHEDULE:
+            if (scheduled := self.coordinator.scheduled_setpoint()) is not None:
+                return scheduled
+        t = data.temperature
         return t.set_point if t else None
 
     @property
