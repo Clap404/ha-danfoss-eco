@@ -1,5 +1,7 @@
 # Danfoss Eco (eTRV) for Home Assistant
 
+[![Open HACS repository on my home assistant](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=Clap404&repository=ha-danfoss-eco&category=integration)
+
 ![Danfoss Eco](custom_components/danfoss_eco/brand/icon%402x.png)
 
 Home Assistant custom integration for **Danfoss Eco** Bluetooth Thermostatic Radiator Valves (eTRV). Local-only, talks directly to the TRV over BLE. This integration aims to transform your TRVs from a programmable device into a connected one.
@@ -63,19 +65,19 @@ The schedule only drives temperature while the thermostat is in **Auto** (schedu
 
 The device has one operating mode; the integration maps it to Home Assistant concepts:
 
-| HVAC mode | Device mode | Behavior |
-|---|---|---|
-| **Heat** | Manual | The TRV holds your target set point. |
-| **Auto** | Schedule | The TRV follows its on-device weekly schedule. The displayed target temperature is derived from that schedule, so it follows the comfort/away transitions without polling the (sleepy, battery-powered) device. |
-| **Off** | Manual | Not a real device mode: the integration sets Manual mode and writes the **frost protection temperature** as the set point. |
+| HVAC mode | Device mode | Behavior                                                                                                                                                                                                        |
+| --------- | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Heat**  | Manual      | The TRV holds your target set point.                                                                                                                                                                            |
+| **Auto**  | Schedule    | The TRV follows its on-device weekly schedule. The displayed target temperature is derived from that schedule, so it follows the comfort/away transitions without polling the (sleepy, battery-powered) device. |
+| **Off**   | Manual      | Not a real device mode: the integration sets Manual mode and writes the **frost protection temperature** as the set point.                                                                                      |
 
 Two overlays sit on top of the base mode, exposed as climate presets:
 
-| Preset | Device mode | Behavior |
-|---|---|---|
-| *(none)* | Manual or Schedule | Normal operation. |
-| **Vacation** | Vacation | The TRV actively holds the **vacation temperature** (a number entity on the device page). Switching back to preset *none* restores the mode you were in. |
-| **Pause** | Pause | The TRV stops regulating and leaves the valve at its current position — useful for radiator maintenance. While paused, the climate card still shows the underlying mode and last set point; nothing tracks a temperature. Preset *none* resumes the recorded mode. |
+| Preset       | Device mode        | Behavior                                                                                                                                                                                                                                                           |
+| ------------ | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| _(none)_     | Manual or Schedule | Normal operation.                                                                                                                                                                                                                                                  |
+| **Vacation** | Vacation           | The TRV actively holds the **vacation temperature** (a number entity on the device page). Switching back to preset _none_ restores the mode you were in.                                                                                                           |
+| **Pause**    | Pause              | The TRV stops regulating and leaves the valve at its current position — useful for radiator maintenance. While paused, the climate card still shows the underlying mode and last set point; nothing tracks a temperature. Preset _none_ resumes the recorded mode. |
 
 The device stores the mode to return to after vacation/pause, so the overlays compose cleanly with both Heat and Auto.
 
