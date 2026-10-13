@@ -15,6 +15,7 @@ from __future__ import annotations
 from typing import Any
 
 from homeassistant.components.climate import (
+    ATTR_HVAC_MODE,
     ClimateEntity,
     ClimateEntityFeature,
     HVACMode,
@@ -129,6 +130,12 @@ class ETRVClimate(ETRVEntity, ClimateEntity):
         return settings.return_mode if settings.return_mode in (Mode.MANUAL, Mode.SCHEDULE) else Mode.MANUAL
 
     async def async_set_temperature(self, **kwargs: Any) -> None:
+        # HA passes hvac_mode through to async_set_temperature (it does not
+        # call async_set_hvac_mode), so handle it here or set_temperature
+        # with only hvac_mode becomes a no-op.
+        hvac_mode = kwargs.get(ATTR_HVAC_MODE)
+        if hvac_mode is not None:
+            await self.async_set_hvac_mode(HVACMode(hvac_mode))
         temp = kwargs.get(ATTR_TEMPERATURE)
         if temp is None:
             return
