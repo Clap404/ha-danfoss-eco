@@ -10,10 +10,10 @@ Exposes connected TRV's as home-assistant thermostats. Devices can be paired dir
 
 Features :
 
-- Heat and Off (frost protection) modes
+- Heat, Auto (schedule) and Off (frost protection) modes
 - Pin (untested)
 - Child lock
-- Vacation preset (untested)
+- Vacation and Pause presets
 - Battery level reporting
 - Ambient temperature reporting
 - On-device weekly schedules (read + write, see [Setting a schedule](#setting-a-schedule))
@@ -58,6 +58,26 @@ Times must land on a **30-minute grid** (`06:00`, `06:30`, …); use `00:00` as 
 The schedule only drives temperature while the thermostat is in **Auto** (schedule) mode. In **Heat** (manual) mode the TRV holds your set point and ignores the program.
 
 > The same schedule can also be set from automations/scripts via the `danfoss_eco.set_schedule` action, using the same `"start-end"` text per day.
+
+## Modes and presets
+
+The device has one operating mode; the integration maps it to Home Assistant concepts:
+
+| HVAC mode | Device mode | Behavior |
+|---|---|---|
+| **Heat** | Manual | The TRV holds your target set point. |
+| **Auto** | Schedule | The TRV follows its on-device weekly schedule. The displayed target temperature is derived from that schedule, so it follows the comfort/away transitions without polling the (sleepy, battery-powered) device. |
+| **Off** | Manual | Not a real device mode: the integration sets Manual mode and writes the **frost protection temperature** as the set point. |
+
+Two overlays sit on top of the base mode, exposed as climate presets:
+
+| Preset | Device mode | Behavior |
+|---|---|---|
+| *(none)* | Manual or Schedule | Normal operation. |
+| **Vacation** | Vacation | The TRV actively holds the **vacation temperature** (a number entity on the device page). Switching back to preset *none* restores the mode you were in. |
+| **Pause** | Pause | The TRV stops regulating and leaves the valve at its current position — useful for radiator maintenance. While paused, the climate card still shows the underlying mode and last set point; nothing tracks a temperature. Preset *none* resumes the recorded mode. |
+
+The device stores the mode to return to after vacation/pause, so the overlays compose cleanly with both Heat and Auto.
 
 ## Notes
 
