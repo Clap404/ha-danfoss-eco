@@ -4,21 +4,18 @@ from __future__ import annotations
 
 import logging
 
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import Event, HomeAssistant, callback
-from homeassistant.helpers import config_validation as cv, device_registry as dr
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.typing import ConfigType
 
-from .const import DOMAIN
 from .coordinator import ETRVCoordinator
+from .entity import ETRVConfigEntry
 from .services import async_register_services
 
 _LOGGER = logging.getLogger(__name__)
 
-CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
-
-PLATFORMS: list[Platform] = [
+PLATFORMS = [
     Platform.CLIMATE,
     Platform.SENSOR,
     Platform.BINARY_SENSOR,
@@ -32,10 +29,10 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     return True
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+async def async_setup_entry(hass: HomeAssistant, entry: ETRVConfigEntry) -> bool:
     coordinator = ETRVCoordinator(hass, entry)
     await coordinator.async_config_entry_first_refresh()
-    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
+    entry.runtime_data = coordinator
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(
         hass.bus.async_listen(
@@ -43,6 +40,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         )
     )
     return True
+
+
+async def async_unload_entry(hass: HomeAssistant, entry: ETRVConfigEntry) -> bool:
+    unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    if unload_ok:
+        entry.runtime_data.async_drop_pending()
+    return unload_ok
 
 
 def _device_rename_listener(hass: HomeAssistant, coordinator: ETRVCoordinator):
@@ -65,14 +69,5 @@ def _device_rename_listener(hass: HomeAssistant, coordinator: ETRVCoordinator):
 async def _write_name(coordinator: ETRVCoordinator, name: str) -> None:
     try:
         await coordinator.async_write_name(name)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         _LOGGER.warning("writing name %r to %s failed: %s", name, coordinator.address, exc)
-
-
-async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
-    if unload_ok:
-        coordinator: ETRVCoordinator | None = hass.data[DOMAIN].pop(entry.entry_id, None)
-        if coordinator is not None:
-            coordinator.async_drop_pending()
-    return unload_ok

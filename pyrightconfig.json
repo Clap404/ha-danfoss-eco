@@ -1,8 +1,11 @@
 {
-  "include": ["custom_components"],
+  "include": [
+    "custom_components"
+  ],
   "pythonVersion": "3.12",
   "venvPath": ".",
   "venv": ".venv",
-  "reportMissingTypeStubs": "none",
-  "reportIncompatibleVariableOverride": "none"
+  "reportIncompatibleVariableOverride": "none",
+  "typeCheckingMode": "strict",
+  "reportMissingTypeStubs": "none"
 }

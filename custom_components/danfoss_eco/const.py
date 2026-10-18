@@ -1,46 +1,11 @@
 """Constants for the Danfoss Eco integration."""
 
-from __future__ import annotations
-
 DOMAIN = "danfoss_eco"
-
-DEFAULT_PIN = "0000"
-# The official Danfoss app polls roughly once per hour; polling more often
-# drains the AA batteries noticeably faster.
-DEFAULT_SCAN_INTERVAL = 3600
 
 CONF_SECRET_KEY = "secret_key"
 CONF_PIN = "pin"
+DEFAULT_PIN = "0000"
 
-SERVICE_UUID = "10020000-2749-0001-0000-00805f9b042f"
-
-# Characteristic UUIDs — cross-checked against the official Danfoss app's
-# res/values/strings.xml (Danfoss Eco 1.6.2). Earlier revisions of this file
-# had NAME and CURRENT_TIME pointing at the wrong characteristics.
-UUID_PIN = "10020001-2749-0001-0000-00805f9b042f"  # uuid_pin (connection PIN, plaintext)
-UUID_THERMOSTAT_CODE = "10020002-2749-0001-0000-00805f9b042f"  # uuid_thermostat_code (PIN-set state)
-UUID_SETTINGS = "10020003-2749-0001-0000-00805f9b042f"
-UUID_TEMPERATURE = "10020005-2749-0001-0000-00805f9b042f"  # uuid_manual_temperature
-UUID_NAME = "10020006-2749-0001-0000-00805f9b042f"  # uuid_device_name
-UUID_BOOTLOADER = "10020007-2749-0001-0000-00805f9b042f"
-UUID_CURRENT_TIME = "10020008-2749-0001-0000-00805f9b042f"  # uuid_epoc_time
-UUID_ERRORS = "10020009-2749-0001-0000-00805f9b042f"
-UUID_LANGUAGE = "1002000a-2749-0001-0000-00805f9b042f"
-UUID_SECRET_KEY = "1002000b-2749-0001-0000-00805f9b042f"  # uuid_setup_secret
-UUID_UPDATE_TOKEN = "1002000c-2749-0001-0000-00805f9b042f"
-# Schedule: 3 chars covering Mon-Wed / Thu-Fri / Sat-Sun (each 20/12/12 bytes)
-UUID_SCHEDULE_1 = "1002000d-2749-0001-0000-00805f9b042f"
-UUID_SCHEDULE_2 = "1002000e-2749-0001-0000-00805f9b042f"
-UUID_SCHEDULE_3 = "1002000f-2749-0001-0000-00805f9b042f"
-
-UUID_BATTERY_SERVICE = "0000180f-0000-1000-8000-00805f9b34fb"
-UUID_BATTERY_LEVEL = "00002a19-0000-1000-8000-00805f9b34fb"
-
-# Standard Device Information Service (0x180A) — plaintext string characteristics.
-UUID_DEVICE_INFO_SERVICE = "0000180a-0000-1000-8000-00805f9b34fb"
-UUID_MODEL_NUMBER = "00002a24-0000-1000-8000-00805f9b34fb"
-UUID_SERIAL_NUMBER = "00002a25-0000-1000-8000-00805f9b34fb"
-UUID_FIRMWARE_REVISION = "00002a26-0000-1000-8000-00805f9b34fb"
-UUID_HARDWARE_REVISION = "00002a27-0000-1000-8000-00805f9b34fb"
-UUID_SOFTWARE_REVISION = "00002a28-0000-1000-8000-00805f9b34fb"
-UUID_MANUFACTURER = "00002a29-0000-1000-8000-00805f9b34fb"
+# The official app polls about once an hour; polling more often drains the
+# AA batteries noticeably faster.
+DEFAULT_SCAN_INTERVAL = 3600

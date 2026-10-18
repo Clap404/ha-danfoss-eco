@@ -1,9 +1,8 @@
-"""Diagnostic sensors for Danfoss eTRV."""
+"""Diagnostic sensors."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Callable
 
 from homeassistant.components.sensor import (
     SensorDeviceClass,
@@ -11,26 +10,17 @@ from homeassistant.components.sensor import (
     SensorEntityDescription,
     SensorStateClass,
 )
-from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import (
-    PERCENTAGE,
-    SIGNAL_STRENGTH_DECIBELS_MILLIWATT,
-    EntityCategory,
-)
-from homeassistant.core import HomeAssistant
-from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.const import PERCENTAGE, SIGNAL_STRENGTH_DECIBELS_MILLIWATT, EntityCategory
 
-from .const import DOMAIN
-from .coordinator import ETRVCoordinator, ETRVState
-from .entity import ETRVEntity
+from .entity import ETRVDescribedEntity, ETRVDescription, platform_setup
 
 
 @dataclass(frozen=True, kw_only=True)
-class ETRVSensorDescription(SensorEntityDescription):
-    value_fn: Callable[[ETRVState], float | int | str | None]
+class ETRVSensorDescription(SensorEntityDescription, ETRVDescription[int | str | None]):
+    pass
 
 
-SENSORS: tuple[ETRVSensorDescription, ...] = (
+SENSORS = (
     ETRVSensorDescription(
         key="battery",
         translation_key="battery",
@@ -38,7 +28,7 @@ SENSORS: tuple[ETRVSensorDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=PERCENTAGE,
         entity_category=EntityCategory.DIAGNOSTIC,
-        value_fn=lambda s: s.battery.level if s.battery else None,
+        value_fn=lambda s: s.battery.level,
     ),
     ETRVSensorDescription(
         key="rssi",
@@ -55,29 +45,18 @@ SENSORS: tuple[ETRVSensorDescription, ...] = (
         translation_key="error_flags",
         entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda s: (
-            (", ".join(f.name for f in s.errors.active_flags) or "ok") if s.errors else None
+            ", ".join(f.name for f in s.errors.active_flags) or "ok" if s.errors else None
         ),
     ),
 )
 
 
-async def async_setup_entry(
-    hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
-) -> None:
-    coordinator: ETRVCoordinator = hass.data[DOMAIN][entry.entry_id]
-    async_add_entities(ETRVSensor(coordinator, d) for d in SENSORS)
-
-
-class ETRVSensor(ETRVEntity, SensorEntity):
+class ETRVSensor(ETRVDescribedEntity[int | str | None], SensorEntity):
     entity_description: ETRVSensorDescription
 
-    def __init__(self, coordinator: ETRVCoordinator, description: ETRVSensorDescription) -> None:
-        super().__init__(coordinator, description.key)
-        self.entity_description = description
-
     @property
-    def native_value(self) -> float | int | str | None:
-        data = self.coordinator.data
-        if data is None:
-            return None
-        return self.entity_description.value_fn(data)
+    def native_value(self) -> int | str | None:
+        return self._value()
+
+
+async_setup_entry = platform_setup(lambda c: (ETRVSensor(c, d) for d in SENSORS))

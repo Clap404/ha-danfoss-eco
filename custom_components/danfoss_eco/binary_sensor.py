@@ -1,41 +1,32 @@
-"""Binary sensors for individual error flags + config bits."""
+"""Binary sensors for error flags and config bits."""
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable
 
 from homeassistant.components.binary_sensor import (
     BinarySensorDeviceClass,
     BinarySensorEntity,
     BinarySensorEntityDescription,
 )
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EntityCategory
-from homeassistant.core import HomeAssistant
-from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import DOMAIN
-from .coordinator import ETRVCoordinator, ETRVState
-from .entity import ETRVEntity
-from .etrv.properties import ConfigBit, ErrorFlag
+from .coordinator import ETRVState
+from .entity import ETRVDescribedEntity, ETRVDescription, config_bit, platform_setup
+from .etrv import ConfigBit, ErrorFlag
 
 
 @dataclass(frozen=True, kw_only=True)
-class ETRVBinarySensorDescription(BinarySensorEntityDescription):
-    value_fn: Callable[[ETRVState], bool | None]
+class ETRVBinarySensorDescription(BinarySensorEntityDescription, ETRVDescription[bool | None]):
+    pass
 
 
-def _error(flag: ErrorFlag) -> Callable[[ETRVState], bool | None]:
-    return lambda s: s.errors.has(flag) if s.errors else None
+def _error(*flags: ErrorFlag) -> Callable[[ETRVState], bool | None]:
+    return lambda s: s.errors.has(*flags) if s.errors else None
 
 
-def _cfg(bit: ConfigBit) -> Callable[[ETRVState], bool | None]:
-    return lambda s: s.settings.get_bit(bit) if s.settings else None
-
-
-BINARY_SENSORS: tuple[ETRVBinarySensorDescription, ...] = (
-    # Errors of interest as standalone problem sensors
+BINARY_SENSORS = (
     ETRVBinarySensorDescription(
         key="error_motor_jammed",
         translation_key="error_motor_jammed",
@@ -48,22 +39,14 @@ BINARY_SENSORS: tuple[ETRVBinarySensorDescription, ...] = (
         translation_key="error_low_battery",
         device_class=BinarySensorDeviceClass.BATTERY,
         entity_category=EntityCategory.DIAGNOSTIC,
-        value_fn=lambda s: (
-            s.errors.has(ErrorFlag.LOW_BATTERY) or s.errors.has(ErrorFlag.CRITICAL_BATTERY)
-            if s.errors
-            else None
-        ),
+        value_fn=_error(ErrorFlag.LOW_BATTERY, ErrorFlag.CRITICAL_BATTERY),
     ),
     ETRVBinarySensorDescription(
         key="error_sensor",
         translation_key="error_sensor",
         device_class=BinarySensorDeviceClass.PROBLEM,
         entity_category=EntityCategory.DIAGNOSTIC,
-        value_fn=lambda s: (
-            (s.errors.has(ErrorFlag.SENSOR_FRONT) or s.errors.has(ErrorFlag.SENSOR_VALVE))
-            if s.errors
-            else None
-        ),
+        value_fn=_error(ErrorFlag.SENSOR_FRONT, ErrorFlag.SENSOR_VALVE),
     ),
     ETRVBinarySensorDescription(
         key="error_clock_invalid",
@@ -72,37 +55,21 @@ BINARY_SENSORS: tuple[ETRVBinarySensorDescription, ...] = (
         entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=_error(ErrorFlag.INVALID_CLOCK),
     ),
-    # Config flags as plain on/off sensors
     ETRVBinarySensorDescription(
         key="adaptable_regulation",
         translation_key="adaptable_regulation",
         entity_category=EntityCategory.DIAGNOSTIC,
-        value_fn=_cfg(ConfigBit.ADAPTABLE_REGULATION),
+        value_fn=config_bit(ConfigBit.ADAPTABLE_REGULATION),
     ),
 )
 
 
-async def async_setup_entry(
-    hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
-) -> None:
-    coordinator: ETRVCoordinator = hass.data[DOMAIN][entry.entry_id]
-    async_add_entities(ETRVBinarySensor(coordinator, d) for d in BINARY_SENSORS)
-
-
-class ETRVBinarySensor(ETRVEntity, BinarySensorEntity):
+class ETRVBinarySensor(ETRVDescribedEntity[bool | None], BinarySensorEntity):
     entity_description: ETRVBinarySensorDescription
-
-    def __init__(
-        self,
-        coordinator: ETRVCoordinator,
-        description: ETRVBinarySensorDescription,
-    ) -> None:
-        super().__init__(coordinator, description.key)
-        self.entity_description = description
 
     @property
     def is_on(self) -> bool | None:
-        data = self.coordinator.data
-        if data is None:
-            return None
-        return self.entity_description.value_fn(data)
+        return self._value()
+
+
+async_setup_entry = platform_setup(lambda c: (ETRVBinarySensor(c, d) for d in BINARY_SENSORS))

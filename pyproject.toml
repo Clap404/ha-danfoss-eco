@@ -18,6 +18,7 @@ include = ["custom_components"]
 pythonVersion = "3.12"
 venvPath = "."
 venv = ".venv"
+typeCheckingMode = "strict"
 reportMissingTypeStubs = "none"
 reportIncompatibleVariableOverride = "none"
 
