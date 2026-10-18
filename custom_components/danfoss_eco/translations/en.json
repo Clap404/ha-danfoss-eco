@@ -56,11 +56,7 @@
     "sensor": {
       "battery": { "name": "Battery" },
       "rssi": { "name": "Signal strength" },
-      "error_flags": { "name": "Error flags" },
-      "firmware_revision": { "name": "Firmware" },
-      "hardware_revision": { "name": "Hardware revision" },
-      "model_number": { "name": "Model" },
-      "serial_number": { "name": "Serial number" }
+      "error_flags": { "name": "Error flags" }
     },
     "binary_sensor": {
       "error_motor_jammed": { "name": "Motor jammed" },

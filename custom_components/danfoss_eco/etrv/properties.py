@@ -306,6 +306,13 @@ class Schedule:
     # index 0=Sun, 1=Mon, ..., 6=Sat
     days: list[DaySchedule]
 
+    # (characteristic index, byte offset, day index) of each 6-byte day block.
+    _LAYOUT: ClassVar[tuple[tuple[int, int, int], ...]] = (
+        (0, 2, 1), (0, 8, 2), (0, 14, 3),  # char1: Mon, Tue, Wed after the two temps
+        (1, 0, 4), (1, 6, 5),              # char2: Thu, Fri
+        (2, 0, 6), (2, 6, 0),              # char3: Sat, Sun
+    )
+
     @staticmethod
     def _default_days() -> list[DaySchedule]:
         return [DaySchedule() for _ in range(7)]
@@ -361,36 +368,19 @@ class Schedule:
     def parse(cls, char1: bytes, char2: bytes, char3: bytes) -> "Schedule":
         if len(char1) < 20 or len(char2) < 12 or len(char3) < 12:
             raise ValueError("schedule chars too short")
-        home = char1[0] / 2.0
-        away = char1[1] / 2.0
-        days: list[DaySchedule | None] = [None] * 7
-        # char1[2..]: Mon, Tue, Wed
-        for i, day_idx in enumerate((1, 2, 3)):
-            off = 2 + i * 6
-            days[day_idx] = DaySchedule.parse(char1[off : off + 6])
-        # char2: Thu, Fri
-        for i, day_idx in enumerate((4, 5)):
-            off = i * 6
-            days[day_idx] = DaySchedule.parse(char2[off : off + 6])
-        # char3: Sat, Sun
-        for i, day_idx in enumerate((6, 0)):
-            off = i * 6
-            days[day_idx] = DaySchedule.parse(char3[off : off + 6])
-        return cls(home_temperature=home, away_temperature=away, days=[d or DaySchedule() for d in days])
+        chars = (char1, char2, char3)
+        days = cls._default_days()
+        for c, off, day_idx in cls._LAYOUT:
+            days[day_idx] = DaySchedule.parse(chars[c][off : off + 6])
+        return cls(home_temperature=_b2t(char1[0]), away_temperature=_b2t(char1[1]), days=days)
 
     def pack(self) -> tuple[bytes, bytes, bytes]:
-        c1 = bytearray(20)
-        c1[0] = _t2b(self.home_temperature)
-        c1[1] = _t2b(self.away_temperature)
-        for i, day_idx in enumerate((1, 2, 3)):
-            c1[2 + i * 6 : 2 + i * 6 + 6] = self.days[day_idx].pack()
-        c2 = bytearray(12)
-        for i, day_idx in enumerate((4, 5)):
-            c2[i * 6 : i * 6 + 6] = self.days[day_idx].pack()
-        c3 = bytearray(12)
-        for i, day_idx in enumerate((6, 0)):
-            c3[i * 6 : i * 6 + 6] = self.days[day_idx].pack()
-        return bytes(c1), bytes(c2), bytes(c3)
+        chars = (bytearray(20), bytearray(12), bytearray(12))
+        chars[0][0] = _t2b(self.home_temperature)
+        chars[0][1] = _t2b(self.away_temperature)
+        for c, off, day_idx in self._LAYOUT:
+            chars[c][off : off + 6] = self.days[day_idx].pack()
+        return bytes(chars[0]), bytes(chars[1]), bytes(chars[2])
 
 
 @dataclass

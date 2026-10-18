@@ -50,7 +50,6 @@ from .properties import (
 
 _LOGGER = logging.getLogger(__name__)
 
-DEFAULT_PIN = b"0000"
 CONNECT_ATTEMPTS = 4
 
 
@@ -75,12 +74,7 @@ class ETRVClient:
             await c.write_temperature(Temperature(set_point=21.0, room=t.room))
     """
 
-    def __init__(
-        self,
-        device: BLEDevice,
-        secret_key: bytes | None,
-        pin: bytes = DEFAULT_PIN,
-    ) -> None:
+    def __init__(self, device: BLEDevice, secret_key: bytes | None, pin: bytes) -> None:
         self._device = device
         self._secret = secret_key
         self._pin = pin

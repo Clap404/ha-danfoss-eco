@@ -61,26 +61,11 @@ SENSORS: tuple[ETRVSensorDescription, ...] = (
 )
 
 
-# Static Device Information Service fields exposed as diagnostic sensors.
-# key/translation_key -> field name in coordinator.device_information
-INFO_SENSORS: tuple[tuple[str, str], ...] = (
-    ("firmware_revision", "firmware_revision"),
-    ("hardware_revision", "hardware_revision"),
-    ("model_number", "model_number"),
-    ("serial_number", "serial_number"),
-)
-
-
 async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
     coordinator: ETRVCoordinator = hass.data[DOMAIN][entry.entry_id]
-    entities: list[SensorEntity] = [ETRVSensor(coordinator, d) for d in SENSORS]
-    # Only create an info sensor when the device actually reported the value.
-    for key, field in INFO_SENSORS:
-        if coordinator.device_information.get(field):
-            entities.append(ETRVInfoSensor(coordinator, key, field))
-    async_add_entities(entities)
+    async_add_entities(ETRVSensor(coordinator, d) for d in SENSORS)
 
 
 class ETRVSensor(ETRVEntity, SensorEntity):
@@ -96,18 +81,3 @@ class ETRVSensor(ETRVEntity, SensorEntity):
         if data is None:
             return None
         return self.entity_description.value_fn(data)
-
-
-class ETRVInfoSensor(ETRVEntity, SensorEntity):
-    """A static Device Information Service value (firmware, serial, …)."""
-
-    _attr_entity_category = EntityCategory.DIAGNOSTIC
-
-    def __init__(self, coordinator: ETRVCoordinator, key: str, field: str) -> None:
-        super().__init__(coordinator, key)
-        self._field = field
-        self._attr_translation_key = key
-
-    @property
-    def native_value(self) -> str | None:
-        return self.coordinator.device_information.get(self._field)

@@ -43,8 +43,6 @@ from .etrv.properties import (
 
 _LOGGER = logging.getLogger(__name__)
 
-RETRY_ATTEMPTS = 3
-RETRY_BACKOFF_S = 2.0
 WRITE_DEBOUNCE_S = 5.0
 # Resync the device clock once it drifts past this. The device has no crystal
 # trim and loses a minute or so a week; the app sidesteps the problem by
@@ -61,21 +59,6 @@ def _raw_utc_offset_seconds() -> int:
     offset would double-count it for half the year.
     """
     return -time.timezone
-
-
-async def _with_retry(name: str, op):
-    """Run `op()` (a coro factory) up to RETRY_ATTEMPTS times with backoff."""
-    last_exc: Exception | None = None
-    for attempt in range(1, RETRY_ATTEMPTS + 1):
-        try:
-            return await op()
-        except Exception as exc:  # noqa: BLE001
-            last_exc = exc
-            _LOGGER.debug("%s attempt %d/%d failed: %s", name, attempt, RETRY_ATTEMPTS, exc)
-            if attempt < RETRY_ATTEMPTS:
-                await asyncio.sleep(RETRY_BACKOFF_S * attempt)
-    assert last_exc is not None
-    raise last_exc
 
 
 @dataclass
@@ -101,8 +84,6 @@ class ETRVCoordinator(DataUpdateCoordinator[ETRVState]):
         self.address: str = entry.data["address"]
         secret_hex: str = entry.data[CONF_SECRET_KEY]
         self._secret = bytes.fromhex(secret_hex)
-        pin_str: str = entry.data.get(CONF_PIN, DEFAULT_PIN)
-        self._pin = pin_str.encode("ascii")
         self._ble_lock: asyncio.Lock = hass.data.setdefault(BLE_LOCK_KEY, asyncio.Lock())
         self._pending_setpoint: float | None = None
         self._pending_settings: Settings | None = None
@@ -128,48 +109,48 @@ class ETRVCoordinator(DataUpdateCoordinator[ETRVState]):
             raise UpdateFailed(
                 f"{self.address} not seen by any connectable Bluetooth adapter or proxy"
             )
-        return ETRVClient(ble_device, secret_key=self._secret, pin=self._pin)
+        # PIN is read from the entry each time so an options-flow change applies
+        # without reloading the entry.
+        pin: str = self.entry.data.get(CONF_PIN, DEFAULT_PIN)
+        return ETRVClient(ble_device, secret_key=self._secret, pin=pin.encode("ascii"))
 
     async def _async_update_data(self) -> ETRVState:
         # Flush any pending debounced writes first so the poll reads post-write state.
         await self._flush_now()
         try:
-            return await _with_retry("poll", self._read_all)
+            return await self._read_all()
         except Exception as exc:  # noqa: BLE001
-            raise UpdateFailed(f"poll failed after retries: {exc}") from exc
+            raise UpdateFailed(f"poll failed: {exc}") from exc
 
     async def _read_all(self) -> ETRVState:
         async with self._ble_lock:
-            return await self._read_all_locked()
-
-    async def _read_all_locked(self) -> ETRVState:
-        client = self._open_client()
-        await client.connect()  # retries handled by ETRVClient + outer _with_retry
-        try:
-            battery = await client.read_battery()
-            temperature = await client.read_temperature()
-            settings = await client.read_settings()
+            client = self._open_client()
+            await client.connect()
             try:
-                errors = await client.read_errors()
-            except Exception as exc:  # noqa: BLE001
-                _LOGGER.debug("errors read failed: %s", exc)
-                errors = None
-            try:
-                current_time = await client.read_current_time()
-            except Exception as exc:  # noqa: BLE001
-                _LOGGER.debug("current_time read failed: %s", exc)
-                current_time = None
-            try:
-                schedule = await client.read_schedule()
-            except Exception as exc:  # noqa: BLE001
-                _LOGGER.debug("schedule read failed: %s", exc)
-                schedule = None
-            current_time, errors = await self._repair_clock(client, current_time, errors)
-            # Device Information Service is static — read it only once.
-            if not self.device_information:
-                self.device_information = await client.read_device_information()
-        finally:
-            await client.disconnect()
+                battery = await client.read_battery()
+                temperature = await client.read_temperature()
+                settings = await client.read_settings()
+                try:
+                    errors = await client.read_errors()
+                except Exception as exc:  # noqa: BLE001
+                    _LOGGER.debug("errors read failed: %s", exc)
+                    errors = None
+                try:
+                    current_time = await client.read_current_time()
+                except Exception as exc:  # noqa: BLE001
+                    _LOGGER.debug("current_time read failed: %s", exc)
+                    current_time = None
+                try:
+                    schedule = await client.read_schedule()
+                except Exception as exc:  # noqa: BLE001
+                    _LOGGER.debug("schedule read failed: %s", exc)
+                    schedule = None
+                current_time, errors = await self._repair_clock(client, current_time, errors)
+                # Device Information Service is static — read it only once.
+                if not self.device_information:
+                    self.device_information = await client.read_device_information()
+            finally:
+                await client.disconnect()
 
         rssi = self._latest_rssi()
         return ETRVState(
@@ -252,24 +233,20 @@ class ETRVCoordinator(DataUpdateCoordinator[ETRVState]):
 
     # --- writes --------------------------------------------------------------
 
-    async def _run_session(self, name: str, body) -> None:
-        """Open a connection, run `body(client)`, disconnect. Retries on failure.
+    async def _run_session(self, body) -> None:
+        """Open a connection, run `body(client)`, disconnect.
 
         We assume the device accepted the writes as long as the BLE op did not
         raise — no read-back, no automatic poll afterwards. The next scheduled
         poll will reconcile if the optimistic state is wrong.
         """
-
-        async def op():
-            async with self._ble_lock:
-                client = self._open_client()
-                await client.connect()
-                try:
-                    await body(client)
-                finally:
-                    await client.disconnect()
-
-        await _with_retry(name, op)
+        async with self._ble_lock:
+            client = self._open_client()
+            await client.connect()
+            try:
+                await body(client)
+            finally:
+                await client.disconnect()
 
     def _optimistic_update(self, **changes) -> None:
         """Patch coordinator.data in place and notify entities, without polling."""
@@ -297,82 +274,75 @@ class ETRVCoordinator(DataUpdateCoordinator[ETRVState]):
         async def body(client):
             await client.write_schedule(schedule)
 
-        await self._run_session("write_schedule", body)
+        await self._run_session(body)
         self._optimistic_update(schedule=schedule)
 
     # --- debounced flush -----------------------------------------------------
 
-    def _arm_flush(self) -> None:
-        """Schedule (or reschedule) the debounced flush."""
-        loop = self.hass.loop
-        if self._flush_handle is not None:
-            self._flush_handle.cancel()
-        self._flush_handle = loop.call_later(WRITE_DEBOUNCE_S, self._launch_flush)
+    def _has_pending(self) -> bool:
+        return self._pending_setpoint is not None or self._pending_settings is not None
 
-    def _launch_flush(self) -> None:
-        self._flush_handle = None
-        if self._flush_task and not self._flush_task.done():
-            return
-        self._flush_task = self.hass.async_create_task(self._flush_pending())
+    def _flush_running(self) -> bool:
+        return self._flush_task is not None and not self._flush_task.done()
 
-    async def _flush_pending(self) -> None:
-        setpoint = self._pending_setpoint
-        settings = self._pending_settings
-        if setpoint is None and settings is None:
-            return
-        self._pending_setpoint = None
-        self._pending_settings = None
-
-        async def body(client):
-            if setpoint is not None:
-                await client.write_setpoint(setpoint)
-            if settings is not None:
-                await client.write_settings(settings)
-
-        try:
-            await self._run_session("flush_writes", body)
-        except Exception as exc:  # noqa: BLE001
-            # Nobody is awaiting this task, so re-raising would only warn in the
-            # event loop. Log loudly and drop the optimistic state by polling —
-            # otherwise a failed mode write looks like it succeeded in the UI.
-            _LOGGER.error(
-                "flush_writes failed (setpoint=%s settings=%s): %s",
-                setpoint,
-                "yes" if settings is not None else "no",
-                exc,
-            )
-            # Not awaited: the refresh calls _flush_now, which awaits this task.
-            self.hass.async_create_task(self.async_request_refresh())
-        finally:
-            if self._pending_setpoint is not None or self._pending_settings is not None:
-                self._arm_flush()
-
-    async def _flush_now(self) -> None:
-        """Send pending writes now, including any queued behind an in-flight flush."""
-        while True:
-            if self._flush_handle is not None:
-                self._flush_handle.cancel()
-                self._flush_handle = None
-            if self._flush_task and not self._flush_task.done():
-                await self._flush_task
-            elif self._pending_setpoint is not None or self._pending_settings is not None:
-                self._launch_flush()
-            else:
-                return
-
-    def async_drop_pending(self) -> None:
-        """Drop any pending debounced writes without sending. Used on unload."""
+    def _cancel_flush_timer(self) -> None:
         if self._flush_handle is not None:
             self._flush_handle.cancel()
             self._flush_handle = None
-        self._pending_setpoint = None
-        self._pending_settings = None
+
+    def _arm_flush(self) -> None:
+        """Schedule (or reschedule) the debounced flush."""
+        self._cancel_flush_timer()
+        self._flush_handle = self.hass.loop.call_later(WRITE_DEBOUNCE_S, self._launch_flush)
+
+    def _launch_flush(self) -> None:
+        self._flush_handle = None
+        if not self._flush_running():
+            self._flush_task = self.hass.async_create_task(self._flush_pending())
+
+    async def _flush_pending(self) -> None:
+        """Write pending values, looping so writes queued mid-session are not lost."""
+        while self._has_pending():
+            setpoint, settings = self._pending_setpoint, self._pending_settings
+            self._pending_setpoint = self._pending_settings = None
+
+            async def body(client, setpoint=setpoint, settings=settings):
+                if setpoint is not None:
+                    await client.write_setpoint(setpoint)
+                if settings is not None:
+                    await client.write_settings(settings)
+
+            try:
+                await self._run_session(body)
+            except Exception as exc:  # noqa: BLE001
+                # Nobody awaits this task. Log loudly and poll so the optimistic
+                # state does not keep showing a write that never landed.
+                _LOGGER.error(
+                    "flush_writes failed (setpoint=%s settings=%s): %s",
+                    setpoint,
+                    "yes" if settings is not None else "no",
+                    exc,
+                )
+                # Spawned, not awaited: the refresh calls _flush_now, which awaits this task.
+                self.hass.async_create_task(self.async_request_refresh())
+
+    async def _flush_now(self) -> None:
+        """Send pending writes now, including any queued behind an in-flight flush."""
+        while self._has_pending() or self._flush_running():
+            self._cancel_flush_timer()
+            self._launch_flush()
+            await self._flush_task
+
+    def async_drop_pending(self) -> None:
+        """Drop any pending debounced writes without sending. Used on unload."""
+        self._cancel_flush_timer()
+        self._pending_setpoint = self._pending_settings = None
 
     async def async_write_name(self, name: str) -> None:
         async def body(client):
             await client.write_name(Name(name=name))
 
-        await self._run_session("write_name", body)
+        await self._run_session(body)
 
     async def async_sync_clock(self) -> None:
         async def body(client):
@@ -387,5 +357,5 @@ class ETRVCoordinator(DataUpdateCoordinator[ETRVState]):
             if errors.has(ErrorFlag.INVALID_CLOCK):
                 await client.write_errors(errors.without(ErrorFlag.INVALID_CLOCK))
 
-        await self._run_session("sync_clock", body)
+        await self._run_session(body)
         await self.async_request_refresh()
