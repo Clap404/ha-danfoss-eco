@@ -7,7 +7,7 @@ from dataclasses import dataclass
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.device_registry import DeviceInfo, format_mac
+from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity import Entity, EntityDescription
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -36,19 +36,17 @@ class ETRVEntity(CoordinatorEntity[ETRVCoordinator]):
 
     def __init__(self, coordinator: ETRVCoordinator, key: str) -> None:
         super().__init__(coordinator)
-        mac = format_mac(coordinator.address)
-        dis = coordinator.device_information
-        self._attr_unique_id = f"{mac}_{key}"
+        self._attr_unique_id = f"{coordinator.mac}_{key}"
+        # Manufacturer, model and versions are filled in by the coordinator after its first poll.
         self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, mac)},
+            identifiers={(DOMAIN, coordinator.mac)},
             connections={("bluetooth", coordinator.address)},
             name=coordinator.entry.title,
-            manufacturer=dis.get("manufacturer", "Danfoss"),
-            model=dis.get("model_number", "Eco (eTRV)"),
-            sw_version=dis.get("firmware_revision") or dis.get("software_revision"),
-            hw_version=dis.get("hardware_revision"),
-            serial_number=dis.get("serial_number"),
         )
+
+    @property
+    def available(self) -> bool:
+        return super().available and self.coordinator.has_data
 
 
 @dataclass(frozen=True, kw_only=True)

@@ -88,6 +88,8 @@ class ETRVClimate(ETRVEntity, ClimateEntity):
 
     def _track_next_boundary(self) -> None:
         self._cancel_boundary()
+        if not self.coordinator.has_data:
+            return
         schedule = self.coordinator.schedule
         if self.coordinator.settings.mode != Mode.SCHEDULE or schedule is None:
             return
@@ -120,10 +122,15 @@ class ETRVClimate(ETRVEntity, ClimateEntity):
 
     @property
     def min_temp(self) -> float:
+        # Capability attribute: read even while unavailable.
+        if not self.coordinator.has_data:
+            return super().min_temp
         return self.coordinator.settings.temperature_min
 
     @property
     def max_temp(self) -> float:
+        if not self.coordinator.has_data:
+            return super().max_temp
         return self.coordinator.settings.temperature_max
 
     @property

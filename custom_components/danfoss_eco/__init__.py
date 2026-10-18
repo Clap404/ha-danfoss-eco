@@ -31,9 +31,12 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 
 async def async_setup_entry(hass: HomeAssistant, entry: ETRVConfigEntry) -> bool:
     coordinator = ETRVCoordinator(hass, entry)
-    await coordinator.async_config_entry_first_refresh()
     entry.runtime_data = coordinator
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    # Polls queue on the shared BLE lock; awaiting them here stalls HA startup.
+    entry.async_create_background_task(
+        hass, coordinator.async_refresh(), f"{coordinator.name} first poll"
+    )
     entry.async_on_unload(
         hass.bus.async_listen(
             dr.EVENT_DEVICE_REGISTRY_UPDATED, _device_rename_listener(hass, coordinator)

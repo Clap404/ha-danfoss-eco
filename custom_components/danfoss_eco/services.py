@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant, ServiceCall, callback
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import config_validation as cv, device_registry as dr
 import voluptuous as vol
 
@@ -51,6 +52,8 @@ def async_register_services(hass: HomeAssistant) -> None:
 
     async def handle_set_schedule(call: ServiceCall) -> None:
         coord = _coordinator_for_device(hass, call.data["device_id"])
+        if not coord.has_data:
+            raise HomeAssistantError(f"{coord.address} has not been polled yet")
         schedule = patch_schedule(
             coord.schedule,
             home_temperature=call.data.get("home_temperature"),

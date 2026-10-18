@@ -19,6 +19,8 @@ from homeassistant.components import bluetooth
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_ADDRESS
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers.device_registry import format_mac
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from . import clock
@@ -38,6 +40,8 @@ from .etrv import (
 _LOGGER = logging.getLogger(__name__)
 
 WRITE_DEBOUNCE_S = 5.0
+SCAN_INTERVAL = timedelta(seconds=DEFAULT_SCAN_INTERVAL)
+FIRST_POLL_RETRY = timedelta(minutes=5)
 BLE_LOCK_KEY = f"{DOMAIN}_ble_lock"
 
 
@@ -58,17 +62,23 @@ class ETRVCoordinator(DataUpdateCoordinator[ETRVState]):
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
         self.entry = entry
         self.address: str = entry.data[CONF_ADDRESS]
+        self.mac = format_mac(self.address)
         self._secret = bytes.fromhex(entry.data[CONF_SECRET_KEY])
         self._ble_lock: asyncio.Lock = hass.data.setdefault(BLE_LOCK_KEY, asyncio.Lock())
         self._writes = DebouncedWrites(hass, self._flush_writes, WRITE_DEBOUNCE_S)
         # Device Information Service values are static; read once, then cached.
-        self.device_information: dict[str, str] = {}
+        self._device_information: dict[str, str] = {}
         super().__init__(
             hass,
             _LOGGER,
             name=f"{DOMAIN}-{self.address}",
-            update_interval=timedelta(seconds=DEFAULT_SCAN_INTERVAL),
+            update_interval=SCAN_INTERVAL,
         )
+
+    @property
+    def has_data(self) -> bool:
+        """False until the first poll succeeds."""
+        return self.data is not None  # pyright: ignore[reportUnnecessaryComparison]
 
     # --- state shortcuts -----------------------------------------------------
 
@@ -109,9 +119,13 @@ class ETRVCoordinator(DataUpdateCoordinator[ETRVState]):
         # Flush pending writes first so the poll reads post-write state.
         await self._writes.flush_now()
         try:
-            return await self._read_all()
+            state = await self._read_all()
         except Exception as exc:
+            if not self.has_data:
+                self.update_interval = FIRST_POLL_RETRY
             raise UpdateFailed(f"poll failed: {exc}") from exc
+        self.update_interval = SCAN_INTERVAL
+        return state
 
     async def _read_all(self) -> ETRVState:
         async with self._ble_lock:
@@ -131,8 +145,9 @@ class ETRVCoordinator(DataUpdateCoordinator[ETRVState]):
                     clock.async_repair_clock(client, current_time, errors),
                     (current_time, errors),
                 )
-                if not self.device_information:
-                    self.device_information = await client.read_device_information()
+                if not self._device_information:
+                    self._device_information = await client.read_device_information()
+                    self._update_device_registry()
             finally:
                 await client.disconnect()
 
@@ -145,6 +160,21 @@ class ETRVCoordinator(DataUpdateCoordinator[ETRVState]):
             current_time=current_time,
             schedule=schedule,
             rssi=info.rssi if info else None,
+        )
+
+    def _update_device_registry(self) -> None:
+        registry = dr.async_get(self.hass)
+        device = registry.async_get_device(identifiers={(DOMAIN, self.mac)})
+        if device is None:
+            return
+        dis = self._device_information
+        registry.async_update_device(
+            device.id,
+            manufacturer=dis.get("manufacturer", "Danfoss"),
+            model=dis.get("model_number", "Eco (eTRV)"),
+            sw_version=dis.get("firmware_revision") or dis.get("software_revision"),
+            hw_version=dis.get("hardware_revision"),
+            serial_number=dis.get("serial_number"),
         )
 
     async def _optional[T, D](self, name: str, coro: Awaitable[T], default: D) -> T | D:
