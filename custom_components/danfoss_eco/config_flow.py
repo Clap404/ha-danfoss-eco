@@ -231,12 +231,9 @@ class DanfossEcoOptionsFlow(OptionsFlow):
 
         if user_input is not None:
             new_pin = (user_input.get(CONF_PIN) or "").strip()
-            if (
-                new_pin
-                and new_pin.isdigit()
-                and len(new_pin) == 4
-                and new_pin != self.config_entry.data.get(CONF_PIN)
-            ):
+            if new_pin and not (new_pin.isdigit() and len(new_pin) == 4):
+                errors[CONF_PIN] = "invalid_pin"
+            elif new_pin and new_pin != self.config_entry.data.get(CONF_PIN):
                 self.hass.config_entries.async_update_entry(
                     self.config_entry,
                     data={**self.config_entry.data, CONF_PIN: new_pin},
@@ -251,6 +248,11 @@ class DanfossEcoOptionsFlow(OptionsFlow):
                 else:
                     # Only touch the device if the schedule actually changed.
                     if base is None or schedule != base:
+                        if base is None:
+                            _LOGGER.warning(
+                                "%s: schedule not yet read from device, writing the form as-is",
+                                coord.address,
+                            )
                         try:
                             await coord.async_write_schedule(schedule)
                         except Exception as exc:  # noqa: BLE001

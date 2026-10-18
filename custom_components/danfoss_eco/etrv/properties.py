@@ -9,11 +9,14 @@ libetrv (my_etrv2mqtt) to stay compatible with already-paired devices.
 """
 from __future__ import annotations
 
+import logging
 import struct
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from enum import IntEnum
 from typing import ClassVar
+
+_LOGGER = logging.getLogger(__name__)
 
 
 def _b2t(raw: int) -> float:
@@ -48,8 +51,11 @@ class Mode(IntEnum):
 
     @staticmethod
     def from_byte(b: int) -> "Mode":
-        return {0: Mode.MANUAL, 1: Mode.SCHEDULE, 2: Mode.VACATION,
-                3: Mode.VACATION, 4: Mode.PAUSE, 5: Mode.PAUSE}.get(b, Mode.MANUAL)
+        modes = {0: Mode.MANUAL, 1: Mode.SCHEDULE, 2: Mode.VACATION,
+                 3: Mode.VACATION, 4: Mode.PAUSE, 5: Mode.PAUSE}
+        if b not in modes:
+            _LOGGER.warning("unknown mode byte 0x%02x, treating as MANUAL", b)
+        return modes.get(b, Mode.MANUAL)
 
     @staticmethod
     def return_from_byte(b: int) -> "Mode":

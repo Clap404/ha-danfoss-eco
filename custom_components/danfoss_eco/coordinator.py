@@ -133,17 +133,17 @@ class ETRVCoordinator(DataUpdateCoordinator[ETRVState]):
                 try:
                     errors = await client.read_errors()
                 except Exception as exc:  # noqa: BLE001
-                    _LOGGER.debug("errors read failed: %s", exc)
+                    _LOGGER.warning("%s: errors read failed: %s", self.address, exc)
                     errors = None
                 try:
                     current_time = await client.read_current_time()
                 except Exception as exc:  # noqa: BLE001
-                    _LOGGER.debug("current_time read failed: %s", exc)
+                    _LOGGER.warning("%s: current_time read failed: %s", self.address, exc)
                     current_time = None
                 try:
                     schedule = await client.read_schedule()
                 except Exception as exc:  # noqa: BLE001
-                    _LOGGER.debug("schedule read failed: %s", exc)
+                    _LOGGER.warning("%s: schedule read failed: %s", self.address, exc)
                     schedule = None
                 current_time, errors = await self._repair_clock(client, current_time, errors)
                 # Device Information Service is static — read it only once.

@@ -24,6 +24,7 @@ from homeassistant.components.climate import (
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import ATTR_TEMPERATURE, PRECISION_HALVES, UnitOfTemperature
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_track_point_in_utc_time
 
@@ -179,6 +180,12 @@ class ETRVClimate(ETRVEntity, ClimateEntity):
 
     # --- commands ------------------------------------------------------------
 
+    def _settings_or_raise(self) -> Settings:
+        data = self.coordinator.data
+        if not data or not data.settings:
+            raise HomeAssistantError("Thermostat settings not read yet, try again after the next poll")
+        return data.settings
+
     @staticmethod
     def _base_mode(settings: Settings) -> Mode:
         """The non-overlay mode (what vacation/pause returns to)."""
@@ -199,10 +206,7 @@ class ETRVClimate(ETRVEntity, ClimateEntity):
         await self.coordinator.async_write_target_temperature(float(temp))
 
     async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:
-        data = self.coordinator.data
-        if not data or not data.settings:
-            return
-        settings = data.settings
+        settings = self._settings_or_raise()
         if hvac_mode == HVACMode.OFF:
             settings.mode = Mode.MANUAL
             settings.return_mode = Mode.MANUAL
@@ -222,10 +226,7 @@ class ETRVClimate(ETRVEntity, ClimateEntity):
         await self.coordinator.async_write_settings(settings)
 
     async def async_set_preset_mode(self, preset_mode: str) -> None:
-        data = self.coordinator.data
-        if not data or not data.settings:
-            return
-        settings = data.settings
+        settings = self._settings_or_raise()
         if preset_mode == PRESET_NONE:
             settings.mode = self._base_mode(settings)
         elif preset_mode == PRESET_VACATION:

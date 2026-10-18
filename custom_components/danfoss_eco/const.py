@@ -6,7 +6,7 @@ DOMAIN = "danfoss_eco"
 
 DEFAULT_PIN = "0000"
 # The official Danfoss app polls roughly once per hour; polling more often
-# wears the coin-cell battery noticeably faster.
+# drains the AA batteries noticeably faster.
 DEFAULT_SCAN_INTERVAL = 3600
 
 CONF_SECRET_KEY = "secret_key"

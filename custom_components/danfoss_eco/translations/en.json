@@ -48,6 +48,7 @@
       }
     },
     "error": {
+      "invalid_pin": "PIN must be exactly 4 digits.",
       "invalid_schedule": "Could not read the schedule. Use times like `06:00-08:30`, comma-separated, max 3 per day, on 30-minute steps.",
       "write_failed": "Could not write the schedule to the thermostat. It may be unreachable — try again."
     }

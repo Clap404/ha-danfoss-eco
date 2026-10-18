@@ -9,6 +9,7 @@ from homeassistant.components.switch import SwitchEntity, SwitchEntityDescriptio
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN
@@ -62,7 +63,7 @@ class ETRVSwitch(ETRVEntity, SwitchEntity):
     async def _write(self, value: bool) -> None:
         data = self.coordinator.data
         if data is None or data.settings is None:
-            return
+            raise HomeAssistantError("Thermostat settings not read yet, try again after the next poll")
         new_settings = replace(data.settings)
         new_settings.set_bit(self.entity_description.bit, value)
         await self.coordinator.async_write_settings(new_settings)

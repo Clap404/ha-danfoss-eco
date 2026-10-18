@@ -14,6 +14,7 @@ from homeassistant.components.number import (
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EntityCategory, UnitOfTemperature
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN
@@ -112,6 +113,6 @@ class ETRVSettingsNumber(ETRVEntity, NumberEntity):
     async def async_set_native_value(self, value: float) -> None:
         data = self.coordinator.data
         if data is None or data.settings is None:
-            return
+            raise HomeAssistantError("Thermostat settings not read yet, try again after the next poll")
         new_settings = self.entity_description.set_fn(data.settings, value)
         await self.coordinator.async_write_settings(new_settings)

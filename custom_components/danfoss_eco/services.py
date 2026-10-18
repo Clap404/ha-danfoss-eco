@@ -58,6 +58,11 @@ def async_register_services(hass: HomeAssistant) -> None:
         coord = _coordinator_for_device(hass, call.data["device_id"])
         # Start from the last-read schedule so callers can patch a single day.
         base = coord.data.schedule if coord.data else None
+        if base is None:
+            _LOGGER.warning(
+                "%s: schedule not yet read from device, days not given are written empty",
+                coord.address,
+            )
         schedule = deepcopy(base) if base is not None else Schedule.empty()
         if "home_temperature" in call.data:
             schedule.home_temperature = call.data["home_temperature"]
