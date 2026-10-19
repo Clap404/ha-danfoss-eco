@@ -27,7 +27,13 @@ def _switch(key: str, bit: ConfigBit) -> ETRVSwitchDescription:
     )
 
 
-SWITCHES = (_switch("child_lock", ConfigBit.CHILD_LOCK),)
+SWITCHES = (
+    _switch("adaptable_regulation", ConfigBit.ADAPTABLE_REGULATION),
+    _switch("child_lock", ConfigBit.CHILD_LOCK),
+    _switch("display_flip", ConfigBit.DISPLAY_FLIP),
+    _switch("slow_regulation", ConfigBit.SLOW_REGULATION),
+    _switch("vertical_installation", ConfigBit.VERTICAL_INSTALLATION),
+)
 
 
 class ETRVSwitch(ETRVDescribedEntity[bool], SwitchEntity):

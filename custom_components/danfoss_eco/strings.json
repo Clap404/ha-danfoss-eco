@@ -63,11 +63,14 @@
       "error_motor_jammed": { "name": "Motor jammed" },
       "error_low_battery": { "name": "Battery low" },
       "error_sensor": { "name": "Temperature sensor fault" },
-      "error_clock_invalid": { "name": "Clock not set" },
-      "adaptable_regulation": { "name": "Adaptive learning" }
+      "error_clock_invalid": { "name": "Clock not set" }
     },
     "switch": {
-      "child_lock": { "name": "Child lock" }
+      "adaptable_regulation": { "name": "Adaptive learning" },
+      "child_lock": { "name": "Child lock" },
+      "display_flip": { "name": "Flip display" },
+      "slow_regulation": { "name": "Slow regulation" },
+      "vertical_installation": { "name": "Vertical installation" }
     },
     "number": {
       "temperature_min": { "name": "Minimum temperature" },

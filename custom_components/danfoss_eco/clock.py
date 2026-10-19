@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta, timezone
 import logging
-import time
 
 from .etrv import ConfigBit, CurrentTime, ErrorFlag, Errors, ETRVClient, Settings
 
@@ -18,26 +17,31 @@ _LOGGER = logging.getLogger(__name__)
 CLOCK_DRIFT_TOLERANCE_S = 90.0
 
 
-def raw_utc_offset_seconds() -> int:
-    """Standard (non-DST) UTC offset, like the app's TimeZone.getRawOffset().
-
-    The device adds the DST hour itself from the daylight_saving config bit,
-    so sending the DST-inclusive offset would double-count it half the year.
-    """
-    return -time.timezone
+def local_utc_offset_seconds() -> int:
+    """Full local UTC offset, DST hour included: the poll rewrites it when it changes."""
+    offset = datetime.now().astimezone().utcoffset()
+    return int(offset.total_seconds()) if offset else 0
 
 
-def device_wall_clock(current_time: CurrentTime | None, settings: Settings) -> datetime:
-    """The device's local time right now: UTC + stored offset + DST hour if enabled.
+async def async_disable_daylight_saving(client: ETRVClient, settings: Settings) -> Settings:
+    """Clear the daylight_saving bit: the firmware knows one DST rule, so we send the offset."""
+    if not settings.get_bit(ConfigBit.DAYLIGHT_SAVING):
+        return settings
+    settings = settings.with_bit(ConfigBit.DAYLIGHT_SAVING, False)
+    await client.write_settings(settings)
+    _LOGGER.debug("daylight_saving bit cleared")
+    return settings
+
+
+def device_wall_clock(current_time: CurrentTime | None) -> datetime:
+    """The device's local time right now: UTC + stored offset.
 
     Falls back to this machine's timezone if the clock has never been read.
     """
     if current_time is None:
         return datetime.now().astimezone()
-    offset = current_time.offset_seconds
-    if settings.get_bit(ConfigBit.DAYLIGHT_SAVING):
-        offset += 3600
-    return datetime.now(tz=UTC).astimezone(timezone(timedelta(seconds=offset)))
+    offset = timezone(timedelta(seconds=current_time.offset_seconds))
+    return datetime.now(tz=UTC).astimezone(offset)
 
 
 async def async_repair_clock(
@@ -47,7 +51,7 @@ async def async_repair_clock(
     *,
     force: bool = False,
 ) -> tuple[CurrentTime | None, Errors | None]:
-    """Set the clock if unset, drifted or `force`, then acknowledge E10 if latched.
+    """Set the clock if unset, drifted, offset stale or `force`, then acknowledge E10 if latched.
 
     The device refuses SCHEDULE mode while INVALID_CLOCK is latched, and the
     flag stays latched after the clock is set until the fault word is written
@@ -60,12 +64,18 @@ async def async_repair_clock(
         and current_time.time is not None
         and abs((now - current_time.time).total_seconds()) > CLOCK_DRIFT_TOLERANCE_S
     )
-    if force or unset or drifted:
-        await client.write_current_time(
-            CurrentTime(time=now, offset_seconds=raw_utc_offset_seconds())
-        )
+    offset = local_utc_offset_seconds()
+    stale_offset = current_time is not None and current_time.offset_seconds != offset
+    if force or unset or drifted or stale_offset:
+        await client.write_current_time(CurrentTime(time=now, offset_seconds=offset))
         current_time = await client.read_current_time()
-        _LOGGER.debug("clock set (unset=%s drifted=%s forced=%s)", unset, drifted, force)
+        _LOGGER.debug(
+            "clock set (unset=%s drifted=%s stale_offset=%s forced=%s)",
+            unset,
+            drifted,
+            stale_offset,
+            force,
+        )
     if errors is not None and errors.has(ErrorFlag.INVALID_CLOCK):
         await client.write_errors(errors.without(ErrorFlag.INVALID_CLOCK))
         errors = await client.read_errors()

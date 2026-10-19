@@ -95,7 +95,7 @@ class ETRVCoordinator(DataUpdateCoordinator[ETRVState]):
         return self.data.schedule
 
     def device_wall_clock(self) -> datetime:
-        return clock.device_wall_clock(self.data.current_time, self.settings)
+        return clock.device_wall_clock(self.data.current_time)
 
     def scheduled_setpoint(self) -> float | None:
         """What the stored schedule calls for right now, computed locally."""
@@ -140,6 +140,11 @@ class ETRVCoordinator(DataUpdateCoordinator[ETRVState]):
                     "current_time read", client.read_current_time(), None
                 )
                 schedule = await self._optional("schedule read", client.read_schedule(), None)
+                settings = await self._optional(
+                    "daylight saving disable",
+                    clock.async_disable_daylight_saving(client, settings),
+                    settings,
+                )
                 current_time, errors = await self._optional(
                     "clock repair",
                     clock.async_repair_clock(client, current_time, errors),

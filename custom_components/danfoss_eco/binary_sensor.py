@@ -1,4 +1,4 @@
-"""Binary sensors for error flags and config bits."""
+"""Binary sensors for error flags."""
 
 from __future__ import annotations
 
@@ -13,8 +13,8 @@ from homeassistant.components.binary_sensor import (
 from homeassistant.const import EntityCategory
 
 from .coordinator import ETRVState
-from .entity import ETRVDescribedEntity, ETRVDescription, config_bit, platform_setup
-from .etrv import ConfigBit, ErrorFlag
+from .entity import ETRVDescribedEntity, ETRVDescription, platform_setup
+from .etrv import ErrorFlag
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -54,12 +54,6 @@ BINARY_SENSORS = (
         device_class=BinarySensorDeviceClass.PROBLEM,
         entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=_error(ErrorFlag.INVALID_CLOCK),
-    ),
-    ETRVBinarySensorDescription(
-        key="adaptable_regulation",
-        translation_key="adaptable_regulation",
-        entity_category=EntityCategory.DIAGNOSTIC,
-        value_fn=config_bit(ConfigBit.ADAPTABLE_REGULATION),
     ),
 )
 
