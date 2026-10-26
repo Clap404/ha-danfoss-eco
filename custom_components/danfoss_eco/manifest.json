@@ -3,13 +3,40 @@
   "name": "Danfoss Eco (eTRV)",
   "bluetooth": [
     {
-      "manufacturer_id": 89,
-      "service_uuid": "10020000-2749-0001-0000-00805f9b042f"
+      "local_name": "0;0:04:2F:*"
+    },
+    {
+      "local_name": "1;0:04:2F:*"
+    },
+    {
+      "local_name": "2;0:04:2F:*"
+    },
+    {
+      "local_name": "3;0:04:2F:*"
+    },
+    {
+      "local_name": "4;0:04:2F:*"
+    },
+    {
+      "local_name": "5;0:04:2F:*"
+    },
+    {
+      "local_name": "6;0:04:2F:*"
+    },
+    {
+      "local_name": "7;0:04:2F:*"
+    },
+    {
+      "local_name": "0:04:2F:*"
     }
   ],
-  "codeowners": ["@Clap404"],
+  "codeowners": [
+    "@Clap404"
+  ],
   "config_flow": true,
-  "dependencies": ["bluetooth"],
+  "dependencies": [
+    "bluetooth"
+  ],
   "documentation": "https://github.com/Clap404/ha-danfoss-eco",
   "iot_class": "local_polling",
   "issue_tracker": "https://github.com/Clap404/ha-danfoss-eco/issues",

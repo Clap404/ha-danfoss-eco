@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from typing import Any
 
 from bleak.backends.device import BLEDevice
@@ -23,7 +24,7 @@ from homeassistant.helpers.device_registry import format_mac
 import voluptuous as vol
 
 from .const import CONF_PIN, CONF_SECRET_KEY, DEFAULT_PIN, DOMAIN
-from .etrv import ETRVClient, uuids
+from .etrv import ETRVClient
 from .options_flow import DanfossEcoOptionsFlow, valid_pin
 
 _LOGGER = logging.getLogger(__name__)
@@ -32,10 +33,18 @@ PAIR_TIMEOUT_S = 30.0
 PAIR_POLL_INTERVAL_S = 2.0
 
 
+# Advertised name is "<status 0-7>;<MAC minus first char>;<user name>" (older firmware: no status)
+_ADV_NAME = re.compile(r"^(?:[0-7];)?0:04:2F:[0-9A-F:]+;(?P<name>.*)$", re.IGNORECASE)
+
+
 def _is_etrv(adv: BluetoothServiceInfoBleak) -> bool:
-    if adv.name and adv.name.endswith("eTRV"):
-        return True
-    return uuids.SERVICE in {u.lower() for u in adv.service_uuids or []}
+    return bool(adv.name and _ADV_NAME.match(adv.name))
+
+
+def _display_name(adv: BluetoothServiceInfoBleak) -> str:
+    match = _ADV_NAME.match(adv.name or "")
+    name = match["name"].strip() if match else ""
+    return f"{name or 'eTRV'} ({adv.address})"
 
 
 class DanfossEcoConfigFlow(ConfigFlow, domain=DOMAIN):
@@ -65,7 +74,7 @@ class DanfossEcoConfigFlow(ConfigFlow, domain=DOMAIN):
         """HA's Bluetooth integration spotted a matching advertisement."""
         if not _is_etrv(discovery_info):
             return self.async_abort(reason="not_supported")
-        return await self._select(discovery_info.address, discovery_info.name or "")
+        return await self._select(discovery_info.address, _display_name(discovery_info))
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """User clicked Add Integration: list discovered, unconfigured eTRVs."""
@@ -75,7 +84,7 @@ class DanfossEcoConfigFlow(ConfigFlow, domain=DOMAIN):
 
         configured = self._async_current_ids()
         self._discovered = {
-            info.address: info.name or info.address
+            info.address: _display_name(info)
             for info in bluetooth.async_discovered_service_info(self.hass)
             if _is_etrv(info) and format_mac(info.address) not in configured
         }
