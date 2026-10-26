@@ -1,9 +1,8 @@
 """Config flow: discover an eTRV, pair with it, store its secret key.
 
-The secret key characteristic is only readable for a few seconds after a
-short button press while a client is connecting. So the pair step shows a
-prompt, then connects and reads in a loop until success or timeout while the
-user presses the button.
+The secret key is only readable while the TRV is in setup mode, entered by a
+short button press and advertised in its local name. Like the official app,
+the pair step waits for that advert, then connects and reads the key once.
 """
 
 from __future__ import annotations
@@ -16,7 +15,11 @@ from typing import Any
 
 from bleak.backends.device import BLEDevice
 from homeassistant.components import bluetooth
-from homeassistant.components.bluetooth import BluetoothServiceInfoBleak
+from homeassistant.components.bluetooth import (
+    BluetoothCallbackMatcher,
+    BluetoothScanningMode,
+    BluetoothServiceInfoBleak,
+)
 from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResult, OptionsFlow
 from homeassistant.const import CONF_ADDRESS
 from homeassistant.core import callback
@@ -31,13 +34,13 @@ from .options_flow import DanfossEcoOptionsFlow, valid_pin
 
 _LOGGER = logging.getLogger(__name__)
 
-PAIR_TIMEOUT_S = 30.0
-PAIR_POLL_INTERVAL_S = 2.0
+SETUP_MODE_TIMEOUT_S = 60
 
 
 # Advertised name is "<status 0-7>;<MAC minus first char>;<user name>" (older firmware: no status)
 _ADV_NAME = re.compile(r"^(?:(?P<status>[0-7]);)?0:04:2F:[0-9A-F:]+;(?P<name>.*)$", re.IGNORECASE)
 _STATUS_PIN_SET = 0b001
+_STATUS_SETUP_MODE = 0b100
 
 
 def _is_etrv(adv: BluetoothServiceInfoBleak) -> bool:
@@ -50,12 +53,20 @@ def _display_name(adv: BluetoothServiceInfoBleak) -> str:
     return f"{name or 'eTRV'} ({adv.address})"
 
 
+def _status(adv: BluetoothServiceInfoBleak) -> int | None:
+    match = _ADV_NAME.match(adv.name or "")
+    return None if match is None or match["status"] is None else int(match["status"])
+
+
 def _pin_set(adv: BluetoothServiceInfoBleak) -> bool:
     """Whether the TRV advertises an enabled PIN; assume so when it does not say."""
-    match = _ADV_NAME.match(adv.name or "")
-    if match is None or match["status"] is None:
-        return True
-    return bool(int(match["status"]) & _STATUS_PIN_SET)
+    status = _status(adv)
+    return status is None or bool(status & _STATUS_PIN_SET)
+
+
+def _in_setup_mode(adv: BluetoothServiceInfoBleak) -> bool:
+    status = _status(adv)
+    return status is not None and bool(status & _STATUS_SETUP_MODE)
 
 
 def _pin_schema() -> vol.Schema:
@@ -63,6 +74,22 @@ def _pin_schema() -> vol.Schema:
         {vol.Required(CONF_PIN): vol.All(cv.string, vol.Length(min=4, max=4))},
         extra=vol.REMOVE_EXTRA,
     )
+
+
+async def _read_secret_once(ble_device: BLEDevice, pin: str) -> tuple[bytes, str]:
+    client = ETRVClient(ble_device, secret_key=None, pin=pin.encode("ascii"))
+    await client.connect()
+    try:
+        secret = await client.read_secret_key()
+        client.set_secret_key(secret)
+        try:
+            name = (await client.read_name()).name.strip()
+        except Exception as exc:
+            _LOGGER.debug("name read failed: %s", exc)
+            name = ""
+        return secret, name
+    finally:
+        await client.disconnect()
 
 
 class DanfossEcoConfigFlow(ConfigFlow, domain=DOMAIN):
@@ -127,17 +154,12 @@ class DanfossEcoConfigFlow(ConfigFlow, domain=DOMAIN):
 
         if user_input is not None:
             pin = (user_input.get(CONF_PIN) or DEFAULT_PIN).strip()
-            ble_device = bluetooth.async_ble_device_from_address(
-                self.hass, self._address, connectable=True
-            )
             paired: tuple[bytes, str] | None = None
             if not valid_pin(pin):
                 errors[CONF_PIN] = "invalid_pin"
-            elif ble_device is None:
-                errors["base"] = "not_connectable"
             else:
                 try:
-                    paired = await self._try_read_secret(ble_device, pin)
+                    paired = await self._try_read_secret(self._address, pin)
                 except WrongPinError:
                     # The advert can lag behind a PIN just set in the app.
                     self._ask_pin = True
@@ -163,37 +185,29 @@ class DanfossEcoConfigFlow(ConfigFlow, domain=DOMAIN):
             errors=errors,
         )
 
-    async def _try_read_secret(self, ble_device: BLEDevice, pin: str) -> tuple[bytes, str] | None:
-        """Connect repeatedly until the secret key is readable, or time out.
+    async def _try_read_secret(self, address: str, pin: str) -> tuple[bytes, str] | None:
+        """Wait for the TRV to advertise setup mode, then read the secret key.
 
         Returns the key and the name stored on the TRV ("" if unreadable).
         """
-        deadline = self.hass.loop.time() + PAIR_TIMEOUT_S
-        last_exc: Exception | None = None
-        while self.hass.loop.time() < deadline:
-            client = ETRVClient(ble_device, secret_key=None, pin=pin.encode("ascii"))
-            try:
-                await client.connect()
-                secret = await client.read_secret_key()
-                _LOGGER.info("Paired with %s", self._address)
-                client.set_secret_key(secret)
-                try:
-                    name = (await client.read_name()).name.strip()
-                except Exception as exc:
-                    _LOGGER.debug("name read failed: %s", exc)
-                    name = ""
-                return secret, name
-            except WrongPinError:
-                raise
-            except Exception as exc:
-                last_exc = exc
-                _LOGGER.debug("pair attempt failed: %s", exc)
-            finally:
-                await client.disconnect()
-            await asyncio.sleep(PAIR_POLL_INTERVAL_S)
-
-        _LOGGER.warning("Pairing timed out for %s: %s", self._address, last_exc)
-        return None
+        try:
+            info = await bluetooth.async_process_advertisements(
+                self.hass,
+                _in_setup_mode,
+                BluetoothCallbackMatcher(address=address, connectable=True),
+                BluetoothScanningMode.ACTIVE,
+                SETUP_MODE_TIMEOUT_S,
+            )
+        except TimeoutError:
+            _LOGGER.warning("%s never advertised setup mode", address)
+            return None
+        try:
+            return await _read_secret_once(info.device, pin)
+        except WrongPinError:
+            raise
+        except Exception as exc:
+            _LOGGER.warning("Reading the secret key of %s failed: %s", address, exc)
+            return None
 
     async def async_step_reauth(self, entry_data: Mapping[str, Any]) -> ConfigFlowResult:
         """The TRV rejected the stored PIN."""

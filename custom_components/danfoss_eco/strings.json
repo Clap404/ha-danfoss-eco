@@ -11,7 +11,7 @@
       },
       "pair": {
         "title": "Pair {name}",
-        "description": "Click Submit, then short-press the button on the thermostat. The LED will turn solid for a few seconds — keep this dialog open until pairing completes.",
+        "description": "Click Submit, then short-press the button on the thermostat within a minute. Keep this dialog open until pairing completes.",
         "data": {
           "pin": "PIN set on the thermostat (4 digits)"
         }
@@ -27,7 +27,7 @@
     "error": {
       "wrong_pin": "The thermostat rejected this PIN.",
       "connect_failed": "Could not reach the thermostat. Try again.",
-      "pairing_failed": "Could not read pairing key. Make sure you short-pressed the button while the LED was off; retry.",
+      "pairing_failed": "Pairing failed: the thermostat did not enter setup mode, or its key could not be read. Submit again and short-press the button.",
       "invalid_pin": "PIN must be exactly 4 digits.",
       "not_connectable": "No Bluetooth adapter or proxy can connect to this thermostat. Check it is in range of a connectable adapter or an active ESPHome proxy."
     },
