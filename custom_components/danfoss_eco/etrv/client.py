@@ -1,7 +1,8 @@
 """Async bleak client for Danfoss eTRV.
 
 Wraps a `BleakClient` with the device's conventions:
-  - the PIN must be written to uuids.PIN right after connecting
+  - the PIN must be written to uuids.PIN right after connecting; a TRV with
+    a PIN enabled refuses a wrong one, any other TRV accepts anything
   - most characteristics are XXTEA-encrypted with a 16-byte secret key
   - the secret key is plaintext and only readable in pairing mode
 
@@ -21,11 +22,31 @@ from . import crypto, uuids
 from .errors import Errors
 from .schedule import Schedule
 from .settings import Settings
-from .values import Battery, CurrentTime, Name, Temperature
+from .values import Battery, CurrentTime, Name, PinCode, Temperature
 
 _LOGGER = logging.getLogger(__name__)
 
 CONNECT_ATTEMPTS = 4
+ATT_WRITE_NOT_PERMITTED = 3
+
+
+class WrongPinError(Exception):
+    """The TRV has a PIN enabled and rejected the one we sent."""
+
+
+def _is_write_not_permitted(exc: BaseException) -> bool:
+    """The TRV refuses a wrong PIN with ATT error 3, however the backend wraps it."""
+    err: BaseException | None = exc
+    while err is not None:
+        # ESPHome proxy: BleakError caused by aioesphomeapi's BluetoothGATTAPIError.
+        gatt_error = getattr(getattr(err, "error", None), "error", None)
+        if gatt_error == ATT_WRITE_NOT_PERMITTED:
+            return True
+        # Local BlueZ adapter.
+        if getattr(err, "dbus_error", None) == "org.bluez.Error.NotPermitted":
+            return True
+        err = err.__cause__
+    return False
 
 
 def convert_pin(pin: bytes) -> bytes:
@@ -59,8 +80,10 @@ class ETRVClient:
         )
         try:
             await self._client.write_gatt_char(uuids.PIN, convert_pin(self._pin), response=True)
-        except Exception:
+        except Exception as exc:
             await self.disconnect()
+            if _is_write_not_permitted(exc):
+                raise WrongPinError(f"{self._device.address} rejected the PIN") from exc
             raise
 
     async def disconnect(self) -> None:
@@ -134,6 +157,12 @@ class ETRVClient:
     async def write_schedule(self, schedule: Schedule) -> None:
         for uuid, payload in zip(uuids.SCHEDULE, schedule.pack(), strict=True):
             await self._write_encrypted(uuid, payload)
+
+    async def read_pin_code(self) -> PinCode:
+        return PinCode.parse(await self._read_encrypted(uuids.PIN_CODE))
+
+    async def write_pin_code(self, pin_code: PinCode) -> None:
+        await self._write_encrypted(uuids.PIN_CODE, pin_code.pack())
 
     async def read_secret_key(self) -> bytes:
         """Plaintext read; only succeeds while the device is in pairing mode."""

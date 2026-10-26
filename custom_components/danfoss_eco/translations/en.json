@@ -13,17 +13,27 @@
         "title": "Pair {name}",
         "description": "Click Submit, then short-press the button on the thermostat. The LED will turn solid for a few seconds — keep this dialog open until pairing completes.",
         "data": {
+          "pin": "PIN set on the thermostat (4 digits)"
+        }
+      },
+      "reauth_confirm": {
+        "title": "PIN rejected by {name}",
+        "description": "The thermostat refused the stored PIN. Enter the PIN set on it.",
+        "data": {
           "pin": "PIN (4 digits)"
         }
       }
     },
     "error": {
+      "wrong_pin": "The thermostat rejected this PIN.",
+      "connect_failed": "Could not reach the thermostat. Try again.",
       "pairing_failed": "Could not read pairing key. Make sure you short-pressed the button while the LED was off; retry.",
       "invalid_pin": "PIN must be exactly 4 digits.",
       "not_connectable": "No Bluetooth adapter or proxy can connect to this thermostat. Check it is in range of a connectable adapter or an active ESPHome proxy."
     },
     "abort": {
       "already_configured": "This thermostat is already configured.",
+      "reauth_successful": "PIN updated.",
       "no_devices_found": "No Danfoss eTRV devices discovered.",
       "not_supported": "Discovered device is not a Danfoss eTRV."
     }
@@ -34,6 +44,7 @@
         "title": "Danfoss eTRV options",
         "description": "Set the weekly heating schedule. Each day is a list of comfort periods like `06:00-08:30, 16:30-22:30` (max 3, 30-minute steps). Empty means away temperature all day. The schedule applies while the thermostat is in Auto mode.",
         "data": {
+          "pin_enabled": "Require a PIN on the thermostat",
           "pin": "PIN (4 digits)",
           "home_temperature": "Home temperature (during periods)",
           "away_temperature": "Away temperature (outside periods)",
@@ -44,12 +55,17 @@
           "friday": "Friday",
           "saturday": "Saturday",
           "sunday": "Sunday"
+        },
+        "data_description": {
+          "pin_enabled": "Thermostat rejects connections without this PIN. Saved to the thermostat.",
+          "pin": "4 digits. Lost PIN may require a factory reset."
         }
       }
     },
     "error": {
       "invalid_pin": "PIN must be exactly 4 digits.",
       "invalid_schedule": "Could not read the schedule. Use times like `06:00-08:30`, comma-separated, max 3 per day, on 30-minute steps.",
+      "pin_write_failed": "Could not write the PIN to the thermostat. It may be unreachable — try again.",
       "write_failed": "Could not write the schedule to the thermostat. It may be unreachable — try again."
     }
   },
@@ -75,7 +91,9 @@
     "number": {
       "temperature_min": { "name": "Minimum temperature" },
       "temperature_max": { "name": "Maximum temperature" },
-      "frost_protection_temperature": { "name": "Frost protection temperature" },
+      "frost_protection_temperature": {
+        "name": "Frost protection temperature"
+      },
       "vacation_temperature": { "name": "Vacation temperature" }
     }
   }

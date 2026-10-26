@@ -19,6 +19,7 @@ from homeassistant.components import bluetooth
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_ADDRESS
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.device_registry import format_mac
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
@@ -32,9 +33,11 @@ from .etrv import (
     Errors,
     ETRVClient,
     Name,
+    PinCode,
     Schedule,
     Settings,
     Temperature,
+    WrongPinError,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -53,6 +56,7 @@ class ETRVState:
     errors: Errors | None
     current_time: CurrentTime | None
     schedule: Schedule | None
+    pin_code: PinCode | None
     rssi: int | None
 
 
@@ -71,6 +75,7 @@ class ETRVCoordinator(DataUpdateCoordinator[ETRVState]):
         super().__init__(
             hass,
             _LOGGER,
+            config_entry=entry,
             name=f"{DOMAIN}-{self.address}",
             update_interval=SCAN_INTERVAL,
         )
@@ -93,6 +98,10 @@ class ETRVCoordinator(DataUpdateCoordinator[ETRVState]):
     @property
     def schedule(self) -> Schedule | None:
         return self.data.schedule
+
+    @property
+    def pin_code(self) -> PinCode | None:
+        return self.data.pin_code
 
     def device_wall_clock(self) -> datetime:
         return clock.device_wall_clock(self.data.current_time)
@@ -120,6 +129,8 @@ class ETRVCoordinator(DataUpdateCoordinator[ETRVState]):
         await self._writes.flush_now()
         try:
             state = await self._read_all()
+        except WrongPinError as exc:
+            raise ConfigEntryAuthFailed(str(exc)) from exc
         except Exception as exc:
             if not self.has_data:
                 self.update_interval = FIRST_POLL_RETRY
@@ -140,6 +151,7 @@ class ETRVCoordinator(DataUpdateCoordinator[ETRVState]):
                     "current_time read", client.read_current_time(), None
                 )
                 schedule = await self._optional("schedule read", client.read_schedule(), None)
+                pin_code = await self._optional("pin code read", client.read_pin_code(), None)
                 settings = await self._optional(
                     "daylight saving disable",
                     clock.async_disable_daylight_saving(client, settings),
@@ -164,6 +176,7 @@ class ETRVCoordinator(DataUpdateCoordinator[ETRVState]):
             errors=errors,
             current_time=current_time,
             schedule=schedule,
+            pin_code=pin_code,
             rssi=info.rssi if info else None,
         )
 
@@ -227,6 +240,9 @@ class ETRVCoordinator(DataUpdateCoordinator[ETRVState]):
 
         try:
             await self._run_session(body)
+        except WrongPinError as exc:
+            _LOGGER.error("%s: write of %s failed: %s", self.address, sorted(pending), exc)
+            self.entry.async_start_reauth(self.hass)
         except Exception as exc:
             # Nobody awaits the flush task. Log loudly and poll so the optimistic
             # state does not keep showing a write that never landed.
@@ -241,6 +257,14 @@ class ETRVCoordinator(DataUpdateCoordinator[ETRVState]):
         """Not debounced: schedule edits are rare and come as a whole."""
         await self._run_session(lambda client: client.write_schedule(schedule))
         self.async_set_updated_data(replace(self.data, schedule=schedule))
+
+    async def async_write_pin_code(self, pin_code: PinCode) -> None:
+        """Set the PIN the TRV enforces, then send that PIN from now on."""
+        await self._run_session(lambda client: client.write_pin_code(pin_code))
+        self.hass.config_entries.async_update_entry(
+            self.entry, data={**self.entry.data, CONF_PIN: pin_code.pin}
+        )
+        self.async_set_updated_data(replace(self.data, pin_code=pin_code))
 
     async def async_write_name(self, name: str) -> None:
         await self._run_session(lambda client: client.write_name(Name(name=name)))

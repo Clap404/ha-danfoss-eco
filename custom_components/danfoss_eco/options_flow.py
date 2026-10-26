@@ -1,5 +1,8 @@
 """Options flow (Settings → Devices & Services → Configure): PIN and weekly schedule.
 
+Once the TRV has been polled, the PIN fields set the PIN the TRV enforces.
+Before that, the PIN field only sets the PIN HA sends when connecting.
+
 The schedule is edited here so users never need Developer tools. Each day is
 a text box of comfort periods like ``06:00-08:30, 16:30-22:30``.
 """
@@ -15,7 +18,7 @@ import voluptuous as vol
 
 from .const import CONF_PIN, DEFAULT_PIN
 from .coordinator import ETRVCoordinator
-from .etrv import Schedule
+from .etrv import PinCode, Schedule
 from .schedule_form import DAY_TO_INDEX, format_day, parse_day, patch_schedule
 
 _LOGGER = logging.getLogger(__name__)
@@ -30,6 +33,10 @@ _TEXT = cast(
     type[selector.Selector[selector.TextSelectorConfig]],
     selector.TextSelector,  # pyright: ignore[reportUnknownMemberType]
 )
+_BOOLEAN = cast(
+    type[selector.Selector[selector.BooleanSelectorConfig]],
+    selector.BooleanSelector,  # pyright: ignore[reportUnknownMemberType]
+)
 _TEMPERATURE = cast(
     selector.Selector[selector.NumberSelectorConfig],
     selector.NumberSelector(  # pyright: ignore[reportUnknownMemberType]
@@ -43,7 +50,10 @@ _TEMPERATURE = cast(
 class DanfossEcoOptionsFlow(OptionsFlow):
     def _coordinator(self) -> ETRVCoordinator | None:
         entry = self.config_entry
-        return entry.runtime_data if entry.state is ConfigEntryState.LOADED else None
+        if entry.state is not ConfigEntryState.LOADED:
+            return None
+        coord: ETRVCoordinator = entry.runtime_data
+        return coord if coord.has_data else None
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         coord = self._coordinator()
@@ -56,14 +66,21 @@ class DanfossEcoOptionsFlow(OptionsFlow):
                 return self.async_create_entry(title="", data={})
 
         current = base if base is not None else Schedule.empty()
-        defaults: dict[str, str | float] = {
-            CONF_PIN: self.config_entry.data.get(CONF_PIN, DEFAULT_PIN),
+        pin_code = coord.pin_code if coord else None
+        defaults: dict[str, str | float | bool] = {
+            CONF_PIN: pin_code.pin
+            if pin_code
+            else self.config_entry.data.get(CONF_PIN, DEFAULT_PIN),
+            "pin_enabled": bool(pin_code and pin_code.enabled),
             "home_temperature": current.home_temperature,
             "away_temperature": current.away_temperature,
             **{day: format_day(current.days[index]) for day, index in DAY_TO_INDEX.items()},
             **(user_input or {}),  # keep what the user just typed on error
         }
-        fields: dict[vol.Optional, object] = {vol.Optional(CONF_PIN): _TEXT()}
+        fields: dict[vol.Optional, object] = {}
+        if pin_code is not None:
+            fields[vol.Optional("pin_enabled")] = _BOOLEAN()
+        fields[vol.Optional(CONF_PIN)] = _TEXT()
         if coord is not None:  # schedule editing needs a live coordinator
             fields |= {
                 vol.Optional("home_temperature"): _TEMPERATURE,
@@ -79,17 +96,40 @@ class DanfossEcoOptionsFlow(OptionsFlow):
     async def _apply(
         self, coord: ETRVCoordinator | None, base: Schedule | None, user_input: dict[str, Any]
     ) -> dict[str, str]:
-        """Store the PIN and write the schedule. Returns form errors, empty on success."""
+        """Apply the PIN, then the schedule. Returns form errors, empty on success."""
         pin = (user_input.get(CONF_PIN) or "").strip()
         if pin and not valid_pin(pin):
             return {CONF_PIN: "invalid_pin"}
-        if pin and pin != self.config_entry.data.get(CONF_PIN):
-            self.hass.config_entries.async_update_entry(
-                self.config_entry, data={**self.config_entry.data, CONF_PIN: pin}
-            )
+        if coord is None or coord.pin_code is None:
+            if pin and pin != self.config_entry.data.get(CONF_PIN):
+                self.hass.config_entries.async_update_entry(
+                    self.config_entry, data={**self.config_entry.data, CONF_PIN: pin}
+                )
+        elif errors := await self._apply_pin_code(coord, coord.pin_code, pin, user_input):
+            return errors
         if coord is None:
             return {}
+        return await self._apply_schedule(coord, base, user_input)
 
+    async def _apply_pin_code(
+        self, coord: ETRVCoordinator, current: PinCode, pin: str, user_input: dict[str, Any]
+    ) -> dict[str, str]:
+        enabled = bool(user_input.get("pin_enabled"))
+        if enabled and not pin:
+            return {CONF_PIN: "invalid_pin"}
+        pin_code = PinCode(pin=pin or current.pin, enabled=enabled)
+        if pin_code == current:
+            return {}
+        try:
+            await coord.async_write_pin_code(pin_code)
+        except Exception as exc:
+            _LOGGER.error("PIN write failed: %s", exc)
+            return {"base": "pin_write_failed"}
+        return {}
+
+    async def _apply_schedule(
+        self, coord: ETRVCoordinator, base: Schedule | None, user_input: dict[str, Any]
+    ) -> dict[str, str]:
         try:
             days = {day: parse_day(user_input[day]) for day in DAY_TO_INDEX if day in user_input}
         except ValueError as exc:

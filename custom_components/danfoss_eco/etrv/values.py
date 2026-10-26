@@ -80,3 +80,25 @@ class CurrentTime:
 
     def pack(self) -> bytes:
         return struct.pack(self._FMT, epoch_from_datetime(self.time), self.offset_seconds)
+
+
+@dataclass
+class PinCode:
+    """The PIN the TRV enforces: int32 PIN (as a decimal number), then an enabled flag.
+
+    With the flag off the TRV accepts any PIN on connect.
+    """
+
+    pin: str
+    enabled: bool
+
+    _FMT: ClassVar[str] = ">IB"
+
+    @classmethod
+    def parse(cls, data: bytes) -> PinCode:
+        pin, enabled = struct.unpack(cls._FMT, data[: struct.calcsize(cls._FMT)])
+        return cls(pin=f"{pin:04d}", enabled=enabled > 0)
+
+    def pack(self) -> bytes:
+        # XXTEA needs at least 8 bytes.
+        return struct.pack(self._FMT, int(self.pin), int(self.enabled)).ljust(8, b"\x00")
