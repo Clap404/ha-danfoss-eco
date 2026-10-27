@@ -1,6 +1,6 @@
 # Danfoss Eco (eTRV) for Home Assistant
 
-[![Open HACS repository on my home assistant](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=Clap404&repository=ha-danfoss-eco&category=integration)
+[![Installs](https://img.shields.io/badge/dynamic/json?color=41BDF5&logo=home-assistant&label=installs&cacheSeconds=15600&url=https://analytics.home-assistant.io/custom_integrations.json&query=$.danfoss_eco.total)](https://analytics.home-assistant.io/)
 
 ![Danfoss Eco](custom_components/danfoss_eco/brand/icon%402x.png)
 
@@ -29,6 +29,8 @@ Features :
 ## Install
 
 ### HACS (recommended)
+
+[![Open HACS repository on my home assistant](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=Clap404&repository=ha-danfoss-eco&category=integration)
 
 1. HACS → Integrations → ⋮ → Custom repositories → add `https://github.com/Clap404/ha-danfoss-eco` as type _Integration_.
 2. Install **Danfoss Eco (eTRV)**, restart Home Assistant.
